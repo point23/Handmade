@@ -10,9 +10,27 @@ struct win32_offscreen_buffer
   int pitch;
 };
 
+struct win32_window_dimension
+{
+  int width;
+  int height;
+};
+
 // TODO: It might not suppose to be a static global.
-static bool Running;
+static bool GlobalRunning;
 static win32_offscreen_buffer GlobalBackBuffer;
+
+win32_window_dimension
+Win32GetWindowDiemnsion(HWND window)
+{
+  RECT clientRect;
+  GetClientRect(window, &clientRect);
+
+  int width = clientRect.right - clientRect.left;
+  int height = clientRect.bottom - clientRect.top;
+
+  return { width, height };
+}
 
 static void
 RenderGradient(win32_offscreen_buffer buffer, int xOffset, int yOffset)
@@ -45,8 +63,8 @@ Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
   buffer->height = height, buffer->width = width;
   buffer->bytesPerPixel = 4; // TODO: Move it elsewhere
 
-  { /* Init struct BITMAPINFO
-       mainly the bmiHeader part, cause we don't use the palette */
+  { /* Init struct BITMAPINFO.
+       Mainly the bmiHeader part, cause we don't use the palette */
     BITMAPINFOHEADER& bmiHeader = buffer->bmi.bmiHeader;
     bmiHeader.biSize = sizeof(bmiHeader);
     bmiHeader.biWidth = buffer->width;
@@ -67,28 +85,30 @@ Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 
 static void
 Win32CopyBufferToWindow(HDC deviceContext,
-                        RECT clientRect,
                         win32_offscreen_buffer buffer,
+                        int windowWidth,
+                        int windowHeight,
                         int x,
                         int y,
-                        int width,
-                        int height)
+                        int paintWidth,
+                        int paintHeight)
 {
-  int windowWidth = clientRect.right - clientRect.left;
-  int windowHeight = clientRect.bottom - clientRect.top;
+  // TODO: Acspect ratio correction
   StretchDIBits(deviceContext,
                 // Destination rectangle
                 0,
                 0,
-                buffer.width,
-                buffer.height,
+                windowWidth,
+                windowHeight,
                 // Source rectangle
                 0,
                 0,
-                windowWidth,
-                windowHeight,
-                buffer.bitmap, // Source
-                &buffer.bmi,   // Destination
+                buffer.width,
+                buffer.height,
+                // Source
+                buffer.bitmap,
+                // Destination
+                &buffer.bmi,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -103,25 +123,19 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
     } break;
 
     case WM_SIZE: {
-      RECT clientRect;
-      GetClientRect(window, &clientRect);
-
-      int width = clientRect.right - clientRect.left;
-      int height = clientRect.bottom - clientRect.top;
-      Win32ResizeDIBSection(&GlobalBackBuffer, width, height);
-
+      // We take the initiative to update the backbuffer.
       OutputDebugStringA("WM_SIZE\n");
     } break;
 
     case WM_DESTROY: {
       // TODO: Handle this as an error.
-      Running = false;
+      GlobalRunning = false;
       OutputDebugStringA("WM_DESTROY\n");
     } break;
 
     case WM_CLOSE: {
       // TODO: Handle this with a message to user
-      Running = false;
+      GlobalRunning = false;
       OutputDebugStringA("WM_CLOSE\n");
     } break;
 
@@ -135,8 +149,17 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         int x = paint.rcPaint.left, y = paint.rcPaint.top;
         int width = paint.rcPaint.right - paint.rcPaint.left;
         int height = paint.rcPaint.bottom - paint.rcPaint.top;
-        Win32CopyBufferToWindow(
-          deviceContext, clientRect, GlobalBackBuffer, x, y, width, height);
+
+        win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
+
+        Win32CopyBufferToWindow(deviceContext,
+                                GlobalBackBuffer,
+                                dimension.width,
+                                dimension.height,
+                                x,
+                                y,
+                                width,
+                                height);
       }
       EndPaint(window, &paint);
     } break;
@@ -156,6 +179,7 @@ WinMain(HINSTANCE instance,
         int nShowCmd)
 {
   WNDCLASS windowClass = {};
+  // Redraw when adjust or move happend vertically or horizontally.
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = Win32MainWindowCallback;
   windowClass.hInstance = instance;
@@ -177,31 +201,37 @@ WinMain(HINSTANCE instance,
                                  0);
 
     if (window) {
-      Running = true;
+      GlobalRunning = true;
+      // Init backbuffer
+      Win32ResizeDIBSection(&GlobalBackBuffer, 1280, 720);
+
       // FIXME: Test variable
       int xOffset = 0, yOffset = 0;
 
-      while (Running) {
+      while (GlobalRunning) {
         MSG message;
 
         // Peek the newest message from queue without pending the application
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
           if (message.message == WM_QUIT) {
-            Running = false;
+            GlobalRunning = false;
           }
 
           TranslateMessage(&message);
           DispatchMessage(&message);
 
           { // FIXME: Test drawing
-            RECT clientRect;
-            GetClientRect(window, &clientRect);
             HDC dc = GetDC(window);
-            int width = clientRect.right - clientRect.left;
-            int height = clientRect.bottom - clientRect.top;
+            win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
             RenderGradient(GlobalBackBuffer, xOffset, yOffset);
-            Win32CopyBufferToWindow(
-              dc, clientRect, GlobalBackBuffer, 0, 0, width, height);
+            Win32CopyBufferToWindow(dc,
+                                    GlobalBackBuffer,
+                                    dimension.width,
+                                    dimension.height,
+                                    0,
+                                    0,
+                                    dimension.width,
+                                    dimension.height);
             xOffset += 1;
             ReleaseDC(window, dc);
           }

@@ -17,52 +17,60 @@ WinMain(HINSTANCE instance,
 
   - https://stackoverflow.com/questions/13871617/winmain-and-main-in-c-extended
 
-#### Section#2 Build tool: batch file
+#### Section#2 Build tool
 
-- Wiki: https://en.wikipedia.org/wiki/Batch_file
+Compiler Command-Line
 
-- `cl` is not recognized
+- Syntax: https://learn.microsoft.com/en-us/cpp/build/reference/compiler-command-line-syntax?view=msvc-170
 
-  - https://stackoverflow.com/questions/8800361/cl-is-not-recognized-as-an-internal-or-external-command
+- `cl` is not recognized: https://stackoverflow.com/questions/8800361/cl-is-not-recognized-as-an-internal-or-external-command
+- Options: https://www.geoffchappell.com/studies/msvc/cl/cl/options.htm
 
-- build.bat
+build.bat
 
-  ```
-  @echo off
-  
-  pushd build
-  cl -Zi ..\code\win32_handmade.cpp [libs]
-  popd
-  ```
+```
+@echo off
+
+pushd build
+cl [Options] FileDir [libs]
+popd
+```
 
 #### Section#3 Debugger: Visual Studio
 
 - Command: `devenv build\win32_handmade.exe`
+
 - A dummy solution would be created for this project.
+
 - Change the working dir:  `[YOUR WORKING DIR]\handmade\data`
+
+- **<u>*Add Watch</u>**
+
+  - ![vs_watch-static_and_local](part_1.assets/vs_watch-static_and_local.png)
+
+    Pay attention to the address value of the local variable(window) and the static variable.
+
 
 #### [MessageBox: A Dummy Hello World Test]
 
-- syntax:
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebox
 
-  - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messagebox
+- Requirements
 
-- requirements
-
-  - | Library    | DLL        |
+    | Library    | DLL        |
     | ---------- | ---------- |
     | User32.lib | User32.dll |
 
-- use case:
+- Use case
 
-  - ```c++
-    MessageBox(
-        0,
-        Welcome!",
-        "Handmade",
-        MB_OK|MB_ICONINFORMATION
-    );
-    ```
+  ```c++
+  MessageBox(
+      0,
+      Welcome!",
+      "Handmade",
+      MB_OK|MB_ICONINFORMATION
+  );
+  ```
 
 ## Chap#002 Opening a Win32 Window
 
@@ -591,6 +599,4 @@ Win32UpdateWindow(HDC deviceContext,
 
   
   > kinda like a Blend Mode?
-
-
 
