@@ -1,79 +1,94 @@
 #include <windows.h>
 
+struct win32_offscreen_buffer
+{
+  BITMAPINFO bmi;
+  void* bitmap;
+  int width;
+  int height;
+  int bytesPerPixel;
+  int pitch;
+};
+
 // TODO: It might not suppose to be a static global.
-static bool running;
-static BITMAPINFO bitmapInfo;
-static void* bitmapMemory;
-static int bitmapHeight, bitmapWidth;
-static int bytesPerPixel = 4;
+static bool Running;
+static win32_offscreen_buffer GlobalBackBuffer;
 
 static void
-RenderGradient(int xOffset, int yOffset)
+RenderGradient(win32_offscreen_buffer buffer, int xOffset, int yOffset)
 { // FIXME: Function only for test drawing
-  int pitch = bitmapWidth * bytesPerPixel;
-  UINT8* row = (UINT8*)bitmapMemory;
-  for (int y = 0; y < bitmapHeight; y++) {
+  UINT8* row = (UINT8*)buffer.bitmap;
+  for (int y = 0; y < buffer.height; y++) {
     UINT32* pixel = (UINT32*)row;
 
-    for (int x = 0; x < bitmapWidth; x++) {
+    for (int x = 0; x < buffer.width; x++) {
       UINT8 blueCannel = (UINT8)(x + xOffset);
       UINT8 greenCannel = (UINT8)(y + yOffset);
 
       *pixel = (greenCannel << 8) | blueCannel;
       pixel += 1;
     }
-    row += pitch;
+    row += buffer.pitch;
   }
 }
 
 static void
-Win32ResizeDIBSection(int width, int height)
+Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 {
   // TODO: Add some VirtualProtect stuff in the future.
-  if (bitmapMemory) {
-    VirtualFree(bitmapMemory, 0, MEM_RELEASE);
+
+  // Clear the old buffer.
+  if (buffer->bitmap) {
+    VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
   }
 
-  bitmapHeight = height, bitmapWidth = width;
+  buffer->height = height, buffer->width = width;
+  buffer->bytesPerPixel = 4; // TODO: Move it elsewhere
 
-  { // Init struct BITMAPINFO
-    BITMAPINFOHEADER& bmiHeader = bitmapInfo.bmiHeader;
-    bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
-    bmiHeader.biWidth = bitmapWidth;
-    bmiHeader.biHeight = -bitmapHeight;
+  { /* Init struct BITMAPINFO
+       mainly the bmiHeader part, cause we don't use the palette */
+    BITMAPINFOHEADER& bmiHeader = buffer->bmi.bmiHeader;
+    bmiHeader.biSize = sizeof(bmiHeader);
+    bmiHeader.biWidth = buffer->width;
+    bmiHeader.biHeight =
+      -buffer->height;      // Top-Down DIB with origin at upper-left
     bmiHeader.biPlanes = 1; // This value must be set to 1.
     bmiHeader.biBitCount = 32;
     bmiHeader.biCompression = BI_RGB;
   }
 
-  int memorySize = (bitmapWidth * bitmapHeight) * bytesPerPixel;
-  bitmapMemory = VirtualAlloc(0, memorySize, MEM_COMMIT, PAGE_READWRITE);
+  int memorySize = (buffer->width * buffer->height) * buffer->bytesPerPixel;
+  buffer->bitmap = VirtualAlloc(0, memorySize, MEM_COMMIT, PAGE_READWRITE);
+
+  buffer->pitch = buffer->width * buffer->bytesPerPixel;
+
   // TODO: Clearing
 }
 
 static void
-Win32UpdateWindow(HDC deviceContext,
-                  RECT* clientRect,
-                  int x,
-                  int y,
-                  int width,
-                  int height)
+Win32CopyBufferToWindow(HDC deviceContext,
+                        RECT clientRect,
+                        win32_offscreen_buffer buffer,
+                        int x,
+                        int y,
+                        int width,
+                        int height)
 {
-  int windowWidth = clientRect->right - clientRect->left;
-  int windowHeight = clientRect->bottom - clientRect->top;
+  int windowWidth = clientRect.right - clientRect.left;
+  int windowHeight = clientRect.bottom - clientRect.top;
   StretchDIBits(deviceContext,
                 // Destination rectangle
                 0,
                 0,
-                bitmapWidth,
-                bitmapHeight,
+                buffer.width,
+                buffer.height,
                 // Source rectangle
                 0,
                 0,
                 windowWidth,
                 windowHeight,
-                bitmapMemory, // Source
-                &bitmapInfo,  // Destination
+                buffer.bitmap, // Source
+                &buffer.bmi,   // Destination
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -93,20 +108,20 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 
       int width = clientRect.right - clientRect.left;
       int height = clientRect.bottom - clientRect.top;
-      Win32ResizeDIBSection(width, height);
+      Win32ResizeDIBSection(&GlobalBackBuffer, width, height);
 
       OutputDebugStringA("WM_SIZE\n");
     } break;
 
     case WM_DESTROY: {
       // TODO: Handle this as an error.
-      running = false;
+      Running = false;
       OutputDebugStringA("WM_DESTROY\n");
     } break;
 
     case WM_CLOSE: {
       // TODO: Handle this with a message to user
-      running = false;
+      Running = false;
       OutputDebugStringA("WM_CLOSE\n");
     } break;
 
@@ -120,7 +135,8 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
         int x = paint.rcPaint.left, y = paint.rcPaint.top;
         int width = paint.rcPaint.right - paint.rcPaint.left;
         int height = paint.rcPaint.bottom - paint.rcPaint.top;
-        Win32UpdateWindow(deviceContext, &clientRect, x, y, width, height);
+        Win32CopyBufferToWindow(
+          deviceContext, clientRect, GlobalBackBuffer, x, y, width, height);
       }
       EndPaint(window, &paint);
     } break;
@@ -140,8 +156,7 @@ WinMain(HINSTANCE instance,
         int nShowCmd)
 {
   WNDCLASS windowClass = {};
-  // TODO: Check if these flags still matter
-  windowClass.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
+  windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = Win32MainWindowCallback;
   windowClass.hInstance = instance;
   windowClass.lpszClassName = "HandmadeWIndowClass";
@@ -162,15 +177,17 @@ WinMain(HINSTANCE instance,
                                  0);
 
     if (window) {
-      running = true;
+      Running = true;
       // FIXME: Test variable
       int xOffset = 0, yOffset = 0;
 
-      MSG message;
-      while (running) {
+      while (Running) {
+        MSG message;
+
+        // Peek the newest message from queue without pending the application
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
           if (message.message == WM_QUIT) {
-            running = false;
+            Running = false;
           }
 
           TranslateMessage(&message);
@@ -182,8 +199,9 @@ WinMain(HINSTANCE instance,
             HDC dc = GetDC(window);
             int width = clientRect.right - clientRect.left;
             int height = clientRect.bottom - clientRect.top;
-            RenderGradient(xOffset, yOffset);
-            Win32UpdateWindow(dc, &clientRect, 0, 0, width, height);
+            RenderGradient(GlobalBackBuffer, xOffset, yOffset);
+            Win32CopyBufferToWindow(
+              dc, clientRect, GlobalBackBuffer, 0, 0, width, height);
             xOffset += 1;
             ReleaseDC(window, dc);
           }

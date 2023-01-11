@@ -1,6 +1,6 @@
-## Day#001 Setting up the Windows build
+## Chap#001 Setting up the Windows build
 
-#### The entry point -- `WinMain`
+#### Section#1 The entry point -- `WinMain`
 
 ```c++
 int CALLBACK
@@ -17,12 +17,9 @@ WinMain(HINSTANCE instance,
 
   - https://stackoverflow.com/questions/13871617/winmain-and-main-in-c-extended
 
-#### Build tool -- bat file
+#### Section#2 Build tool: batch file
 
-- wiki: 
-
-  - https://en.wikipedia.org/wiki/Batch_file
-  - bat for batch
+- Wiki: https://en.wikipedia.org/wiki/Batch_file
 
 - `cl` is not recognized
 
@@ -30,19 +27,19 @@ WinMain(HINSTANCE instance,
 
 - build.bat
 
-  - ```
-    @echo off
-    
-    pushd build
-    cl -Zi ..\code\win32_handmade.cpp [libs]
-    popd
-    ```
+  ```
+  @echo off
+  
+  pushd build
+  cl -Zi ..\code\win32_handmade.cpp [libs]
+  popd
+  ```
 
-#### Debugger -- Visual Studio
+#### Section#3 Debugger: Visual Studio
 
-- command: `devenv build\win32_handmade.exe`
-- a dummy solution would be created for this project
-- change the working dir:  `[YOUR WORKING DIR]\handmade\data`
+- Command: `devenv build\win32_handmade.exe`
+- A dummy solution would be created for this project.
+- Change the working dir:  `[YOUR WORKING DIR]\handmade\data`
 
 #### [MessageBox: A Dummy Hello World Test]
 
@@ -67,34 +64,36 @@ WinMain(HINSTANCE instance,
     );
     ```
 
-## Day#002 Opening a Win32 Window
+## Chap#002 Opening a Win32 Window
 
-#### WNDCLASS
+#### Section#1 WNDCLASS structure
 
-- doc:
-  - https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassa
-
-- use case:
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassa
+  
+- Use case:
 
   - ```c++
     WNDCLASS WindowClass = {};
-    // TODO: Check if these flags still matter
-    WindowClass.style = CS_OWNDC|CS_HREDRAW|CS_VREDRAW;
+    WindowClass.style = CS_HREDRAW|CS_VREDRAW;
     WindowClass.lpfnWndProc = MainWindowCallback;
     WindowClass.hInstance = hInstance;
-    // WindowClass.hIcon
     WindowClass.lpszClassName = "HandmadeWIndowClass";
+    // WindowClass.hIcon
     ```
-
-- windows class style
+  
+- Windows class style
 
   - https://learn.microsoft.com/en-us/windows/win32/winmsg/window-class-styles
   
-- windows proc callback
+    | CS_HREDRAW                                        | CS_VREDRAW                                      |
+    | ------------------------------------------------- | ----------------------------------------------- |
+    | Repaint when width changed or horizontally moved. | Repaint when height change or vertically moved. |
+  
+- *Windows proc callback
 
   - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nc-winuser-wndproc
 
-  - ```c++
+    ```c++
     LRESULT CALLBACK
     Win32MainWindowCallback(HWND 	window,
                        		UINT 	message,
@@ -129,19 +128,24 @@ WinMain(HINSTANCE instance,
         return result;
     }
     ```
-    
-  - message categories
+  
+  - Message categories
   
     - https://learn.microsoft.com/en-us/windows/win32/winmsg/about-messages-and-message-queues#system-defined-messages
+    
   - Mostly used: WM - General window messages
 
-#### Register WindowClass
+#### Section#2 Register Window Class
 
-- syntax:
+- Syntax:
 
   - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerclassa
 
-- use case:
+  - Return Value: ATOM
+
+    Class atom that uniquely identifies the class. If the function fails, the return value is zero.
+
+- Use case:
 
   - ```c++
     if (RegisterClass(&WindowClass)) {
@@ -152,15 +156,15 @@ WinMain(HINSTANCE instance,
     }
     ```
 
-#### CreateWindowEx
+#### Section#3 Create Window
 
 - Ex for Extended.
 
-- syntax: 
+- Syntax: 
 
   - https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexa
 
-- use case:
+- Use case:
 
   - ```c++
     HWND windowHandle = 
@@ -180,13 +184,55 @@ WinMain(HINSTANCE instance,
     	);
     ```
 
-#### *Handle Messages
+#### Section#4 *Handle Messages
+
+Solution#1 Naïve Approach:
+
+```c++
+for (;;) {
+    MSG message;
+    
+    BOOL messageResult = GetMessage(&message, 0, 0, 0);
+    if (messageResult > 0) {
+        TranslateMessage(&message);
+        DispatchMessage(&message);
+    }
+    else {
+        break;
+    }
+}
+```
+
+Solution#2 Without blocking
+
+```c++
+while (running) {
+    MSG message;
+    
+    while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+        if (message.message == WM_QUIT) {
+            running = false;
+        }
+
+        TranslateMessage(&message);
+        DispatchMessage(&message);
+    }
+}
+```
 
 `GetMessageA()`
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessage
 - Retrieves a message from the calling thread's message queue.
 - *Remarks: during this call, the system delivers pending.
+
+`PeekMessageA()`
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagea
+
+- Remarks:
+
+  `wRemoveMsg`: Specifies how messages are to be handled.
 
 `TranslateMessage()`:
 
@@ -198,28 +244,28 @@ WinMain(HINSTANCE instance,
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-dispatchmessage
 - Dispatches a message to a window procedure.
 
-Use case
+#### Section#5 Simple Painting
+
+Use case: inside the `Win32MainWindowCallback`
 
 ```c++
-if (windowHandle) {
-    MSG message;
-    for (;;) {
-        BOOL messageResult = GetMessage(&message, 0, 0, 0);
-        if (messageResult > 0) {
-            TranslateMessage(&message);
-            DispatchMessage(&message);
-        }
-        else {
-            break;
-        }
+case WM_PAINT: {
+    PAINTSTRUCT paint;
+    HDC deviceContext = BeginPaint(window, &paint);
+    int x = paint.rcPaint.left, y = paint.rcPaint.top;
+    int width = paint.rcPaint.right - paint.rcPaint.left;
+    int height = paint.rcPaint.bottom - paint.rcPaint.top;
+    static DWORD backdrop = WHITENESS;
+    PatBlt(deviceContext, x, y, width, height, backdrop);
+    if (backdrop == WHITENESS) {
+        backdrop = BLACKNESS;
     }
-}
-else {
-    // TODO: Logging
-}
+    else {
+        backdrop = WHITENESS;
+    }
+    EndPaint(window, &paint);
+} break;
 ```
-
-#### Simple Painting
 
 PAINTSTRUCT
 
@@ -229,42 +275,19 @@ PAINTSTRUCT
 `BeginPaint()`
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-beginpaint
-- prepares the specified window for painting and fills a PAINTSTRUCT structure with information about the painting.
+- Prepares the specified window for painting and fills a PAINTSTRUCT structure with information about the painting.
 
 `EndPaint()`
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-endpaint
-- marks the end of painting in the specified window.
+- Marks the end of painting in the specified window.
 
 `PatBlt()`:
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-patblt
-- paints the specified rectangle using the brush that is currently selected into the specified device context.
+- Paints the specified rectangle using the brush that is currently selected into the specified device context.
 
-Use case: inside the `Win32MainWindowCallback`
-
-- ```c++
-  case WM_PAINT: {
-      PAINTSTRUCT paint;
-      HDC deviceContext = BeginPaint(window, &paint);
-      int x = paint.rcPaint.left, y = paint.rcPaint.top;
-      int width = paint.rcPaint.right - paint.rcPaint.left;
-      int height = paint.rcPaint.bottom - paint.rcPaint.top;
-      static DWORD backdrop = WHITENESS;
-      PatBlt(deviceContext, x, y, width, height, backdrop);
-      if (backdrop == WHITENESS) {
-          backdrop = BLACKNESS;
-      }
-      else {
-          backdrop = WHITENESS;
-      }
-      EndPaint(window, &paint);
-  } break;
-  ```
-
-## Chap#003 Backbuffer: Allocating and Animating
-
-#### Section#1 Quit
+#### Section#6 Quit
 
 > Let Windows clean up everything for us.
 
@@ -278,30 +301,47 @@ Solution#1 `PostQuitMessage(nExitCode)`
 
 >  use these to separate 3 kinds of "static":
 >
-> #define local_persist       static
-> #define global_variable  static
-> #define internal       	   static
+>  #define local_persist       static
+>  #define global_variable  static
+>  #define internal       	   static
 
 - inside the `MainWindowCallback` function
 
   ```c++
   case WM_DESTROY: {
-              // TODO: Handle this as an error.
-              running = false;
-              OutputDebugStringA("WM_DESTROY\n");
-          } break;
+      running = false;
+      OutputDebugStringA("WM_DESTROY\n");
+  } break;
   
-          case WM_CLOSE: {
-              // TODO: Handle this with a message to user
-              running = false;
-              OutputDebugStringA("WM_CLOSE\n");
-          } break;
+  case WM_CLOSE: {
+      // TODO: Handle this with a message to user
+      running = false;
+      OutputDebugStringA("WM_CLOSE\n");
+  } break;
   ```
 
 - inside the entry point, the `WinMain`
 
-  - from: `for(;;)'`
+  - from: `for(;;)`
   - to: `while(running)`
+
+## Chap#003 Backbuffer: Allocating and Animating
+
+#### Section#1 the Global backbuffer
+
+ ```c++
+ struct win32_offscreen_buffer
+ {
+   BITMAPINFO bmi;
+   void* bitmap;
+   int width;
+   int height;
+   int bytesPerPixel;
+   int pitch;
+ };
+ 
+ static win32_offscreen_buffer GlobalBackBuffer;
+ ```
 
 #### Section#2 Windows GDI
 
@@ -318,9 +358,9 @@ Device Context
 
   An application must inform GDI to load a particular device driver, once the driver is loaded, to prepare the device for drawing operations, the creating and maintaining of a DC is needed.
 
-- Defines <u>a set of **graphic objects**</u> and their associated attributes, and the graphic modes that affect output.
+- Defines <u>a set of graphic objects</u> and their associated attributes, and the graphic modes that affect output.
 
-  - Graphic Objects
+  - **<u>Graphic Objects</u>**
 
     | gRAPHIC oBJECTS | aSSOCIATED attriBUTES                   |
     | --------------- | --------------------------------------- |
@@ -352,15 +392,21 @@ BITMAPINFO
     } BITMAPINFO, *LPBITMAPINFO, *PBITMAPINFO;
     ```
 
-- contains information about the dimensions of color format.
+- Contains information about the dimensions of color format.
 
 - PS: we don't care about `bmiColors` since it's used as palette.
 
 BITMAPINFO<u>HEADER</u>
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader
+
 - Contains information about the dimensions and color format of a DIB.
+
 - **<u>*Remarks</u>**: For uncompressed RGB bitmaps, if **biHeight** is positive, the bitmap is a bottom-up DIB with the origin at the lower left corner. If **biHeight** is negative, the bitmap is a top-down DIB with the origin at the upper left corner.
+
+  | Positive  | Negative |
+  | --------- | -------- |
+  | bottom-up | top-down |
 
 DIBSECTION
 
@@ -376,11 +422,10 @@ DIBSECTION
     } DIBSECTION, *LPDIBSECTION, *PDIBSECTION;
     ```
 
-- contains information about a DIB
-  - (DIB: Device-Independent-Bitmap)
+- Contains information about a DIB (Device-Independent-Bitmap)
 
 
-#### Section#4 Win32ResizeDIBSection
+#### Section#4 Resize DIBSection
 
 Solution#1 Naïve Approach:
 
@@ -404,27 +449,36 @@ Solution#1 Naïve Approach:
 
 ```c++
 static void
-Win32ResizeDIBSection(int width, int height)
+Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 {
-  if (bitmapMemory) {
-    VirtualFree(bitmapMemory, 0, MEM_RELEASE);
+  // TODO: Add some VirtualProtect stuff in the future.
+
+  // Clear the old buffer.
+  if (buffer->bitmap) {
+    VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
   }
-    
-  bitmapHeight = height, bitmapWidth = width;
-  
-  { // Init struct BITMAPINFO
-    BITMAPINFOHEADER& bmiHeader = bitmapInfo.bmiHeader;
-    bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
-    bmiHeader.biWidth = bitmapWidth;
-    bmiHeader.biHeight = bitmapHeight;
+
+  buffer->height = height, buffer->width = width;
+  buffer->bytesPerPixel = 4; // TODO: Move it elsewhere
+
+  { /* Init struct BITMAPINFO
+       mainly the bmiHeader part, cause we don't use the palette */
+    BITMAPINFOHEADER& bmiHeader = buffer->bmi.bmiHeader;
+    bmiHeader.biSize = sizeof(bmiHeader);
+    bmiHeader.biWidth = buffer->width;
+    bmiHeader.biHeight =
+      -buffer->height;      // Top-Down DIB with origin at upper-left
     bmiHeader.biPlanes = 1; // This value must be set to 1.
     bmiHeader.biBitCount = 32;
     bmiHeader.biCompression = BI_RGB;
   }
 
-  int bytesPerPixel = 4;
-  int memorySize = (width * height) * bytesPerPixel;
-  bitmapMemory = VirtualAlloc(0, memorySize, MEM_COMMIT, PAGE_READWRITE);
+  int memorySize = (buffer->width * buffer->height) * buffer->bytesPerPixel;
+  buffer->bitmap = VirtualAlloc(0, memorySize, MEM_COMMIT, PAGE_READWRITE);
+
+  buffer->pitch = buffer->width * buffer->bytesPerPixel;
+
+  // TODO: Clearing
 }
 ```
 
@@ -445,7 +499,7 @@ Win32ResizeDIBSection(int width, int height)
 
   > If we need these memory in the future, set the `dwFreeType` with `MEM_DECOMMIT`, and the pages will be in reserved state, and we might need to `VirtualProect()` them.
 
-#### Section#5 Win32UpdateWindow
+#### Section#5 Copy Buffer To Window
 
 1D -> 2D
 
@@ -498,14 +552,14 @@ Process:
 ```c++
 static void
 Win32UpdateWindow(HDC deviceContext,
-                  RECT* clientRect,
+                  RECT clientRect,
                   int x,
                   int y,
                   int width,
                   int height)
 {
-  int windowWidth = clientRect->right - clientRect->left;
-  int windowHeight = clientRect->bottom - clientRect->top;
+  int windowWidth = clientRect.right - clientRect.left;
+  int windowHeight = clientRect.bottom - clientRect.top;
   StretchDIBits(deviceContext,
                 // Destination rectangle
                 0,
@@ -522,6 +576,7 @@ Win32UpdateWindow(HDC deviceContext,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
+
 ```
 
 `StretchDIBits()`
@@ -532,35 +587,10 @@ Win32UpdateWindow(HDC deviceContext,
 
 - rop: raster-operation code
 
-  - Define how the color data for the source rectangle is to be combined with the color data for the destination rectangle to achieve the final color.
+  1. Define how the color data for the source rectangle is to be combined with the color data for the destination rectangle to achieve the final color.
 
-    > kinda like a Blend Mode?
-
-#### Fix Blocking Issue
-
-`PeekMessageA()`
-
-- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagea
-
-- Remarks:
-
-  `wRemoveMsg`: Specifies how messages are to be handled.
-
-- Use Case
-
-  ```c++
-  MSG message;
-  while (running) {
-      while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-          if (message.message == WM_QUIT) {
-              running = false;
-          }
   
-          TranslateMessage(&message);
-          DispatchMessage(&message);
-      }
-  }
-  ```
+  > kinda like a Blend Mode?
 
 
 
