@@ -1,3 +1,46 @@
+## Chap#000 Misc: Interesting Topics
+
+#### Section#1 Windows Data Types for String
+
+​	https://learn.microsoft.com/en-us/windows/win32/intl/windows-data-types-for-strings
+
+3 sets of character
+
+1. Generic Type
+2. Unicode
+3. Windows code pages
+
+Difference between Windows Code Pages and Unicode
+
+- the basic unit of operation is a 16-bit character for Unicode and an 8-bit character for Windows code pages.
+
+#### Section#2 Conventions for Function Prototypes
+
+​	https://learn.microsoft.com/en-us/windows/win32/intl/conventions-for-function-prototypes
+
+> New Windows applications should use Unicode to avoid the inconsistencies of varied code pages and for ease of localization. They should be written with generic functions, and should define UNICODE to compile the functions into Unicode functions. In the few places where an application must work with 8-bit character data, it can make explicit use of the functions for Windows code pages.
+
+```c++
+#ifdef UNICODE
+#define SetWindowText SetWindowTextW
+#else
+#define SetWindowText SetWindowTextA
+#endif // !UNICODE
+
+BOOL SetWindowTextA(
+  HWND hwnd,
+  LPCSTR lpText
+);
+
+BOOL SetWindowTextW(
+  HWND hwnd,
+  LPCWSTR lpText
+);
+```
+
+- Windows code page prototype uses the type LPCSTR.
+- Unicode prototype uses LPCWSTR.
+
 ## Chap#001 Setting up the Windows build
 
 #### Section#1 The entry point -- `WinMain`
@@ -140,8 +183,7 @@ popd
   - Message categories
   
     - https://learn.microsoft.com/en-us/windows/win32/winmsg/about-messages-and-message-queues#system-defined-messages
-    
-  - Mostly used: WM - General window messages
+    - Mostly used: WM - General window messages
 
 #### Section#2 Register Window Class
 
@@ -152,6 +194,8 @@ popd
   - Return Value: ATOM
 
     Class atom that uniquely identifies the class. If the function fails, the return value is zero.
+    
+    - Look for all windows data types: https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 
 - Use case:
 
@@ -455,44 +499,36 @@ Solution#1 Naïve Approach:
 
 *Solution#2 Simplify: directly allocate and release the memory
 
+1. Release the old bitmap memory 
+2. Init bitmapInfo structure (mainly on bitmapHeader)
+3. Commit a compatible size of memory for new bitmap
+
 ```c++
 static void
 Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 {
-  // TODO: Add some VirtualProtect stuff in the future.
+    // TODO: Add some VirtualProtect stuff in the future.
 
-  // Clear the old buffer.
-  if (buffer->bitmap) {
-    VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
-  }
+    // Clear the old buffer.
+    if (buffer->bitmap) {
+        VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
+    }
 
-  buffer->height = height, buffer->width = width;
-  buffer->bytesPerPixel = 4; // TODO: Move it elsewhere
+    buffer->height = height, buffer->width = width;
+    buffer->bytesPerPixel = 4; // TODO: Move it elsewhere
 
-  { /* Init struct BITMAPINFO
-       mainly the bmiHeader part, cause we don't use the palette */
-    BITMAPINFOHEADER& bmiHeader = buffer->bmi.bmiHeader;
-    bmiHeader.biSize = sizeof(bmiHeader);
-    bmiHeader.biWidth = buffer->width;
-    bmiHeader.biHeight =
-      -buffer->height;      // Top-Down DIB with origin at upper-left
-    bmiHeader.biPlanes = 1; // This value must be set to 1.
-    bmiHeader.biBitCount = 32;
-    bmiHeader.biCompression = BI_RGB;
-  }
-
-  int memorySize = (buffer->width * buffer->height) * buffer->bytesPerPixel;
-  buffer->bitmap = VirtualAlloc(0, memorySize, MEM_COMMIT, PAGE_READWRITE);
-
-  buffer->pitch = buffer->width * buffer->bytesPerPixel;
-
-  // TODO: Clearing
-}
+    { /* Init struct BITMAPINFO.
+           Mainly the bmiHeader part, cause we don't use the palette */
+        BITMAPINFOHEADER& bmiHeader = buffer->bmi.bmiHeader;
+        bmiHeader.biSize = sizeof(bmiHeader);
+        bmiHeader.biWidth = buffer->width;
+        bmiHeader.biHeight =
+            -buffer->height;      // Top-Down DIB with origin at upper-left
+        bmiHeader.biPlanes = 1; // This value must be set to 1.
+        bmiHeader.biBitCount = 32;
+        bmiHeader.biCompression = BI_RGB;
+    }
 ```
-
-1. Release the old bitmap memory 
-2. Init bitmapInfo structure (mainly on bitmapHeader)
-3. Commit a compatible size of memory for new bitmap
 
 `VirtualAlloc()`
 
@@ -559,28 +595,27 @@ Process:
 
 ```c++
 static void
-Win32UpdateWindow(HDC deviceContext,
-                  RECT clientRect,
-                  int x,
-                  int y,
-                  int width,
-                  int height)
+Win32CopyBufferToWindow(HDC deviceContext,
+                        win32_offscreen_buffer* buffer,
+                        int windowWidth,
+                        int windowHeight)
 {
-  int windowWidth = clientRect.right - clientRect.left;
-  int windowHeight = clientRect.bottom - clientRect.top;
+  // TODO: Acspect ratio correction
   StretchDIBits(deviceContext,
                 // Destination rectangle
                 0,
                 0,
-                bitmapWidth,
-                bitmapHeight,
+                windowWidth,
+                windowHeight,
                 // Source rectangle
                 0,
                 0,
-                windowWidth,
-                windowHeight,
-                bitmapMemory, // Source
-                &bitmapInfo,  // Destination
+                buffer->width,
+                buffer->height,
+                // Source
+                buffer->bitmap,
+                // Destination
+                &buffer->bmi,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -599,4 +634,152 @@ Win32UpdateWindow(HDC deviceContext,
 
   
   > kinda like a Blend Mode?
+
+## Chap#004 Gamepad and Keyboard Input
+
+#### Section#01 XInput Game Controller API
+
+​	Using this API, any connected Xbox Controller can be queried for its state, and vibration effects can be set. Applications should support multiple controllers, which are indicated by ID(range of 0-3).
+
+References:
+
+- Programming Guide: https://learn.microsoft.com/en-us/windows/win32/xinput/programming-guide
+- Functions: https://learn.microsoft.com/en-us/windows/win32/xinput/functions
+- Structures: https://learn.microsoft.com/en-us/windows/win32/xinput/structures
+
+XINPUT_STATE
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/xinput/ns-xinput-xinput_state
+
+  ```c++
+  typedef struct _XINPUT_STATE {
+    DWORD          dwPacketNumber;
+    XINPUT_GAMEPAD Gamepad;
+  } XINPUT_STATE, *PXINPUT_STATE;
+  ```
+
+  - The packet number indicates whether there have been any changes in the state of the controller. 
+
+XINPUT_GAMEPAD
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/xinput/ns-xinput-xinput_gamepad
+
+  ```c++
+  typedef struct _XINPUT_GAMEPAD {
+    WORD  wButtons;
+    BYTE  bLeftTrigger;
+    BYTE  bRightTrigger;
+    SHORT sThumbLX;
+    SHORT sThumbLY;
+    SHORT sThumbRX;
+    SHORT sThumbRY;
+  } XINPUT_GAMEPAD, *PXINPUT_GAMEPAD;
+  ```
+
+  - `wButtons` are bitmask of the device digital buttons.
+    - example like DPAD: directional Pad, 十字键
+
+Use case:
+
+```c++
+for (DWORD controllerIdx = 0; controllerIdx < XUSER_MAX_COUNT; controllerIdx++) {
+    DWORD result;
+    XINPUT_STATE controllerState;
+
+    result = XInputGetState(controllerIdx, &controllerState);
+    if (result == ERROR_SUCCESS) {
+        // Controller is connected
+
+        XINPUT_GAMEPAD* gamepad = &controllerState.Gamepad;
+        // D-pad
+        bool dPadUp = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+        bool dPadDown = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+        bool dPadLeft = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+        bool dPadRight = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+}
+```
+
+#### Section#2 *Dynamically Load Right Version of XInput
+
+`dir /S filename`
+
+<img src="part_1.assets/dir_s.png" alt="dir_s" style="zoom:50%;" />
+
+- Find libs in C:\Windows with `dir`
+
+`LoadLibrary()`
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
+
+  ```c++
+  HMODULE LoadLibraryA(
+    [in] LPCSTR lpLibFileName
+  );
+  ```
+
+`GetProcAddress()`
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+
+  ```c++
+  FARPROC GetProcAddress(
+    [in] HMODULE hModule,
+    [in] LPCSTR  lpProcName
+  );
+  ```
+
+Use case:
+
+```c++
+// XInputGetState
+#define X_INPUT_GET_STATE(name)                                                \
+  DWORD WINAPI name(DWORD userIdx, XINPUT_STATE* state)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub)
+{
+  return 0;
+}
+static x_input_get_state* XInputGetState_ = XInputGetStateStub;
+#define XInputGetState XInputGetState_
+
+static void
+Win32LoadXInput(void)
+{
+  HMODULE xInputLib = LoadLibraryA("xinput1_3.dll");
+  if (xInputLib) {
+    XInputGetState =
+      (x_input_get_state*)GetProcAddress(xInputLib, "XInputGetState");
+  }
+}
+```
+
+#### Section#3 Keyboard Input
+
+Overview: https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+
+Additional params of keystroke messages
+
+- `wParam`:  Virtual-Key Code
+  - https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+- `lParam`: Keystroke Message Flags
+  - https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+
+Use case: Inside `Win32MainWindowCallback`
+
+```c++
+case WM_SYSKEYDOWN:
+case WM_SYSKEYUP:
+case WM_KEYDOWN:
+case WM_KEYUP: {
+    UINT32 vkcode = wParam;
+    bool wasDown = lParam & (1 << 30) != 0;
+    bool isDown = lParam & (1 << 31) == 0;
+    
+    if (vkcode == VK_ESCAPE) {
+        OutputDebugStringA("VK_ESCAPE\n");
+    } else if (vkcode == VK_SPACE) {
+        OutputDebugStringA("VK_SPACE\n");
+    }
+} break;
+```
 

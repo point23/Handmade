@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <xinput.h>
 
 struct win32_offscreen_buffer
 {
@@ -19,6 +20,41 @@ struct win32_window_dimension
 // TODO: It might not suppose to be a static global.
 static bool GlobalRunning;
 static win32_offscreen_buffer GlobalBackBuffer;
+
+/* BEGIN REGION: Dynacmically loaded functions */
+// XInputGetState
+#define X_INPUT_GET_STATE(name)                                                \
+  DWORD WINAPI name(DWORD userIdx, XINPUT_STATE* state)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub)
+{
+  return 0;
+}
+static x_input_get_state* XInputGetState_ = XInputGetStateStub;
+#define XInputGetState XInputGetState_
+// XInputSetState
+#define X_INPUT_SET_STATE(name)                                                \
+  DWORD WINAPI name(DWORD userIdx, XINPUT_VIBRATION* vibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub)
+{
+  return 0;
+}
+static x_input_set_state* XInputSetState_ = XInputSetStateStub;
+#define XInputSetState XInputSetState_
+
+static void
+Win32LoadXInput(void)
+{
+  HMODULE xInputLib = LoadLibraryA("xinput1_3.dll");
+  if (xInputLib) {
+    XInputGetState =
+      (x_input_get_state*)GetProcAddress(xInputLib, "XInputGetState");
+    XInputSetState =
+      (x_input_set_state*)GetProcAddress(xInputLib, "XInputSetState");
+  }
+}
+/* END REGION: Dynacmically loaded functions */
 
 win32_window_dimension
 Win32GetWindowDiemnsion(HWND window)
@@ -85,13 +121,9 @@ Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 
 static void
 Win32CopyBufferToWindow(HDC deviceContext,
-                        win32_offscreen_buffer buffer,
+                        win32_offscreen_buffer* buffer,
                         int windowWidth,
-                        int windowHeight,
-                        int x,
-                        int y,
-                        int paintWidth,
-                        int paintHeight)
+                        int windowHeight)
 {
   // TODO: Acspect ratio correction
   StretchDIBits(deviceContext,
@@ -103,12 +135,12 @@ Win32CopyBufferToWindow(HDC deviceContext,
                 // Source rectangle
                 0,
                 0,
-                buffer.width,
-                buffer.height,
+                buffer->width,
+                buffer->height,
                 // Source
-                buffer.bitmap,
+                buffer->bitmap,
                 // Destination
-                &buffer.bmi,
+                &buffer->bmi,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
@@ -142,28 +174,52 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_PAINT: {
       PAINTSTRUCT paint;
       RECT clientRect;
-      GetClientRect(window, &clientRect);
-
       HDC deviceContext = BeginPaint(window, &paint);
-      { // Painting Process
-        int x = paint.rcPaint.left, y = paint.rcPaint.top;
-        int width = paint.rcPaint.right - paint.rcPaint.left;
-        int height = paint.rcPaint.bottom - paint.rcPaint.top;
+      // GetClientRect(window, &clientRect);
+      // int x = paint.rcPaint.left, y = paint.rcPaint.top;
+      // int width = paint.rcPaint.right - paint.rcPaint.left;
+      // int height = paint.rcPaint.bottom - paint.rcPaint.top;
+      // EndPaint(window, &paint);
 
-        win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
+      // Display buffer to window
+      win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
+      Win32CopyBufferToWindow(
+        deviceContext, &GlobalBackBuffer, dimension.width, dimension.height);
 
-        Win32CopyBufferToWindow(deviceContext,
-                                GlobalBackBuffer,
-                                dimension.width,
-                                dimension.height,
-                                x,
-                                y,
-                                width,
-                                height);
-      }
-      EndPaint(window, &paint);
     } break;
 
+    /* BEGIN REGION: User KeyBoard Input */
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+      UINT32 vkcode = wParam;
+      bool wasDown = lParam & (1 << 30) != 0;
+      bool isDown = lParam & (1 << 31) == 0;
+
+      if (vkcode == 'W') {
+        OutputDebugStringA("W\n");
+      } else if (vkcode == 'A') {
+        OutputDebugStringA("A\n");
+      } else if (vkcode == 'S') {
+        OutputDebugStringA("S\n");
+      } else if (vkcode == 'D') {
+        OutputDebugStringA("D\n");
+      } else if (vkcode == VK_UP) {
+        OutputDebugStringA("VK_UP\n");
+      } else if (vkcode == VK_DOWN) {
+        OutputDebugStringA("VK_DOWN\n");
+      } else if (vkcode == VK_LEFT) {
+        OutputDebugStringA("VK_LEFT\n");
+      } else if (vkcode == VK_RIGHT) {
+        OutputDebugStringA("VK_RIGHT\n");
+      } else if (vkcode == VK_ESCAPE) {
+        OutputDebugStringA("VK_ESCAPE\n");
+      } else if (vkcode == VK_SPACE) {
+        OutputDebugStringA("VK_SPACE\n");
+      }
+    } break;
+    /* END REGION: User KeyBoard Input */
     default: {
       result = DefWindowProc(window, message, wParam, lParam);
     } break;
@@ -178,6 +234,9 @@ WinMain(HINSTANCE instance,
         LPSTR lpCmdLine,
         int nShowCmd)
 {
+  // Dynamically load several functions
+  Win32LoadXInput();
+
   WNDCLASS windowClass = {};
   // Redraw when adjust or move happend vertically or horizontally.
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -219,24 +278,78 @@ WinMain(HINSTANCE instance,
 
           TranslateMessage(&message);
           DispatchMessage(&message);
+        }
 
-          { // FIXME: Test drawing
-            HDC dc = GetDC(window);
-            win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
-            RenderGradient(GlobalBackBuffer, xOffset, yOffset);
-            Win32CopyBufferToWindow(dc,
-                                    GlobalBackBuffer,
-                                    dimension.width,
-                                    dimension.height,
-                                    0,
-                                    0,
-                                    dimension.width,
-                                    dimension.height);
-            xOffset += 1;
-            ReleaseDC(window, dc);
+        // TODO: Should we ask for user input more frequently?
+        for (DWORD controllerIdx = 0; controllerIdx < XUSER_MAX_COUNT;
+             controllerIdx++) {
+          DWORD result;
+          XINPUT_STATE controllerState;
+
+          result = XInputGetState(controllerIdx, &controllerState);
+          if (result == ERROR_SUCCESS) {
+            // Controller is connected
+
+            XINPUT_GAMEPAD* gamepad = &controllerState.Gamepad;
+            // D-pad
+            bool dPadUp = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+            bool dPadDown = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+            bool dPadLeft = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+            bool dPadRight = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+
+            // Button
+            bool btnStart = gamepad->wButtons & XINPUT_GAMEPAD_START;
+            bool btnback = gamepad->wButtons & XINPUT_GAMEPAD_BACK;
+            bool btnA = gamepad->wButtons & XINPUT_GAMEPAD_A;
+            bool btnB = gamepad->wButtons & XINPUT_GAMEPAD_B;
+            bool btnX = gamepad->wButtons & XINPUT_GAMEPAD_X;
+            bool btnY = gamepad->wButtons & XINPUT_GAMEPAD_Y;
+
+            // Shoulder
+            bool leftShoulder =
+              gamepad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+            bool rightShoulder =
+              gamepad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+
+            // Left thumbstick
+            UINT16 thumbLeftX = gamepad->sThumbLX;
+            UINT16 thumbLeftY = gamepad->sThumbLY;
+
+            // Right thumbstick
+            UINT16 thumbRightX = gamepad->sThumbRX;
+            UINT16 thumbRightY = gamepad->sThumbRY;
+
+            // FIXME: Test Offset
+            if (dPadUp)
+              yOffset += 1;
+            if (dPadDown)
+              yOffset -= 1;
+
+            if (dPadLeft)
+              xOffset += 1;
+            if (dPadRight)
+              xOffset -= 1;
+
+            if (btnX) {
+              XINPUT_VIBRATION vibration;
+              vibration.wLeftMotorSpeed = 60000;
+              vibration.wRightMotorSpeed = 60000;
+              XInputSetState(controllerIdx, &vibration);
+            }
+          } else {
+            // Controller is not connected
           }
         }
+
+        // FIXME: Test drawing
+        HDC dc = GetDC(window);
+        win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
+        RenderGradient(GlobalBackBuffer, xOffset, yOffset);
+        Win32CopyBufferToWindow(
+          dc, &GlobalBackBuffer, dimension.width, dimension.height);
+        ReleaseDC(window, dc);
       }
+
     } else {
       // TODO: Logging
     }
