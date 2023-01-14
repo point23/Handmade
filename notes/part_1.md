@@ -737,7 +737,7 @@ Use case:
 typedef X_INPUT_GET_STATE(x_input_get_state);
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
-  return 0;
+  return ERROR_DEVICE_NOT_CONNECTED;
 }
 static x_input_get_state* XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
@@ -745,7 +745,11 @@ static x_input_get_state* XInputGetState_ = XInputGetStateStub;
 static void
 Win32LoadXInput(void)
 {
-  HMODULE xInputLib = LoadLibraryA("xinput1_3.dll");
+  HMODULE xInputLib = LoadLibrary("xinput1_4.dll");
+  if (!xInputLib) {
+    xInputLib = LoadLibrary("xinput1_3.dll");
+  }
+    
   if (xInputLib) {
     XInputGetState =
       (x_input_get_state*)GetProcAddress(xInputLib, "XInputGetState");
@@ -755,7 +759,7 @@ Win32LoadXInput(void)
 
 #### Section#3 Keyboard Input
 
-Overview: https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+Overview: https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input
 
 Additional params of keystroke messages
 
@@ -763,6 +767,7 @@ Additional params of keystroke messages
   - https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 - `lParam`: Keystroke Message Flags
   - https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+  - Example-Bits 29: The value is 1 if the ALT key is down while the key is pressed.
 
 Use case: Inside `Win32MainWindowCallback`
 
@@ -780,6 +785,222 @@ case WM_KEYUP: {
     } else if (vkcode == VK_SPACE) {
         OutputDebugStringA("VK_SPACE\n");
     }
+    
+    bool altDown = lParam & (1 << 29);
+    if (vkcode == VK_F4 && altDown) {
+        GlobalRunning = false;
+    }
 } break;
 ```
+
+## Chap#005 Sound
+
+​	Casey used DirectSound since it's 2014 when he made this tutorial, Windows has a alternative option for audio API: XAudio2
+
+- https://learn.microsoft.com/en-us/windows/win32/xaudio2/xaudio2-introduction
+
+#### Section#01 Intro
+
+Sound Buffers
+
+- Basics: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416967(v=vs.85)
+- A portion of computer memory that temporarily holds sound files on their way to audio speakers.
+- *Sounds of different formats can be played in different secondary buffers, and are automatically mixed to a common format in the primary buffer.
+- The application can play a sound stored in a secondary buffer as a single event or as a looping sound that plays continuously.
+
+Primary buffer
+
+- Mixing sounds and sending them to the output device.
+
+Secondary Buffer
+
+- Storing and playing individual sounds.
+- Used as stream data.
+
+Requirements
+
+| DLL        | FUnction            | Header   |
+| ---------- | ------------------- | -------- |
+| dsound.dll | `DirectSoundCreate` | dsound.h |
+
+#### Section#02 Direct-Sound structures
+
+DIRECTSOUND
+
+​	`IDirectSound8/IDirectSound8`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418035(v=vs.85)
+- Used to create buffer objects, manage devices, and set up the environment.
+
+DIRECTSOUNDBUFFER
+
+​	`IDirectSoundBuffer/IDirectSoundBuffer8`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418055(v=vs.85)
+- Used to manage sound buffers.
+- Remarks: for the primary buffer, you must use the `IDirectSoundBuffer` interface.
+
+DSBUFFERDESC
+
+- Syntax:
+
+- Describes the characteristics of a new buffer object.
+
+- `dwFlags`: Flags specifying the capabilities of the buffer.
+
+  - DSBCAPS
+    - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416818(v=vs.85)
+    - Describes the capabilities of a DirectSound buffer object.
+
+- Use case
+
+  ```c++
+  DSBUFFERDESC bufferDescription = {};
+  bufferDescription.dwSize = sizeof(bufferDescription);
+  bufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
+  ```
+
+WAVEFORMATEX
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee419019(v=vs.85)
+
+- Defines the format of waveform-audio data.
+
+- Use case
+
+  ```c++
+  waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+  waveFormat.nChannels = 2;
+  waveFormat.nSamplesPerSec = samplesPerSecond;
+  waveFormat.wBitsPerSample = 16;
+  waveFormat.nBlockAlign =
+  waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
+  waveFormat.nAvgBytesPerSec = samplesPerSecond * waveFormat.nBlockAlign;
+  waveFormat.cbSize = 0;
+  ```
+
+#### Section#03 Direct-Sound functions
+
+`DirectSoundCreate()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/mt708921(v=vs.85)
+
+- Creates and initializes an `IDirectSound` interface.
+
+- Use case
+
+  ```c++
+  LPDIRECTSOUND dSound;
+  if(SUCCEEDED(DirectSoundCreate(0, &dSound, 0))) {
+      // Create Primary&Secondary Buffer.
+  }
+  ```
+
+`IDriectSound:SetCooperativeLevel()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418049(v=vs.85)
+- Sets the cooperative level of the application for this sound device.
+- *Remark: The application must set the cooperative level by calling this method before its buffers can be played. The recommended cooperative level is DSSCL_PRIORITY.
+
+`IDirectSound:CreateSoundBuffer()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418039(v=vs.85)
+
+  ```c++
+  HRESULT CreateSoundBuffer(
+      LPCDSBUFFERDESC pcDSBufferDesc,
+      LPDIRECTSOUNDBUFFER * ppDSBuffer,
+      LPUNKNOWN pUnkOuter
+  )
+  ```
+
+- Creates a sound buffer object to manage audio samples.
+
+`IDirectSound8:SetFormat()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418077(v=vs.85)
+-  DirectSound will set the primary buffer to the specified format.
+- Remarks: 
+  1. The format of the primary buffer should be set before secondary buffers are created.
+  2. *This method is not available for secondary sound buffers. 
+
+`IDircetSoundBuffer8:GetCurrentPosition()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418062(v=vs.85)
+
+  ```c++
+  HRESULT GetCurrentPosition(
+      LPDWORD pdwCurrentPlayCursor,
+      LPDWORD pdwCurrentWriteCursor
+  )
+  ```
+
+- Retrieves the position of the play and write cursors in the sound buffer.
+
+- Ignore the write cursor.
+
+`IDirectSoundBuffer8:Lock()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418073(v=vs.85)
+
+  ```c++
+  HRESULT Lock(
+      DWORD dwOffset,
+      DWORD dwBytes,
+      [out] LPVOID * ppvAudioPtr1,
+      [out] LPDWORD  pdwAudioBytes1,
+      [out] LPVOID * ppvAudioPtr2,
+      [out] LPDWORD pdwAudioBytes2,
+      DWORD dwFlags
+  )
+  ```
+
+- Readies all or part of the buffer for a data write and returns pointers to which data can be written.
+
+- Remarks:
+
+  ![get_cur_pos_of_sound_buffer](part_1.assets/get_cur_pos_of_sound_buffer.png)
+
+`IDirectSoundBuffer8:Play()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418074(v=vs.85)
+- Causes the sound buffer to play, starting at the play cursor.
+
+`IDirectSoundBuffer8:Unlock()`
+
+- Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418153(v=vs.85)
+- Releases a locked sound buffer.
+
+#### Section#04 Init Direct-Sound
+
+Process
+
+1. Create Direct-Sound object.
+2. Init wave-format.
+3. Set sound's cooperative level.
+4. Create primary buffer:
+   1. Init buffer description
+   2. create sound buffer
+   3. set wave-format
+5. Create secondary buffer.
+6. Start playing sounds.
+
+#### Section#05 Filling and Playing
+
+​		https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee417553(v=vs.85)
+
+Process
+
+1. Let the sound buffer play.
+2. Get the play cursor of secondary sound buffer.
+3. Calculate the byte to lock.
+4. Calculate bytes to write:
+   1. `byteToLock == playCursor`
+   2. `byteToLock > playCursor`
+   3. `byteToLock < playCursor`
+5. Lock the region to write.
+6. Write to the sound buffer.
+7. Unlock the region to write.
+
+
 
