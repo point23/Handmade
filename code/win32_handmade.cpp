@@ -1,7 +1,9 @@
 #include <dSound.h.>
 #include <windows.h>
 #include <xinput.h>
-// TODO: Only in dev mode, we may need to get rid of Runtime Libs
+
+// FIXME: Only in dev mode, we should implement it ourselves in the future,
+// we may need to get rid of Runtime Libs
 #include <math.h>
 
 struct win32_offscreen_buffer
@@ -169,6 +171,68 @@ Win32InitDSound(HWND window, INT32 bufferSize, INT32 samplesPerSecond)
     // TODO: Logging, filed to load sound library.
   }
 }
+
+struct win32_sound_output
+{
+  const int SamplesPerSecond = 48000;
+  const int BytesPerSample = sizeof(INT16) * 2;
+  // Bytes in sound buffer be like:
+  // int16 int16  int16 int16
+  // [Left Right] [Left Right]
+  const INT32 SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
+  int toneHz = 256;
+  UINT32 runningSampleIdx = 0;
+  // Samples-per-circle = samples-per-second / frequency
+  int wavePeriod = SamplesPerSecond / toneHz;
+  int halfWavePeriod = wavePeriod / 2;
+  int maxAbsVolume = 4000;
+};
+
+// FIXME: Test audio stuff, Fill the secondary sound buffer with sine wave.
+static void
+Win32FillSoundBuffer(win32_sound_output* soundOutput,
+                     DWORD offset,
+                     DWORD bytesTOWrite)
+{
+  VOID* /*out*/ region1;
+  DWORD /*out*/ region1Size;
+  VOID* /*out*/ region2;
+  DWORD /*out*/ region2Size;
+  // Lock the buffer
+  HRESULT bufferIsLock = GlobalSecondaryBuffer->Lock(
+    offset, bytesTOWrite, &region1, &region1Size, &region2, &region2Size, 0);
+
+  if (SUCCEEDED(bufferIsLock)) {
+    // Write Region1
+    DWORD region1SampleCount = region1Size / soundOutput->BytesPerSample;
+    INT16* writePointer = (INT16*)region1;
+    for (DWORD i = 0; i < region1SampleCount; i++) {
+      float t = 2.0f * PI32 * (float)soundOutput->runningSampleIdx /
+                (float)soundOutput->wavePeriod;
+      float sineVal = sinf(t);
+      INT16 sampleVal = (INT16)(soundOutput->maxAbsVolume * sineVal);
+      *writePointer++ = sampleVal; // Left
+      *writePointer++ = sampleVal; // Right
+      soundOutput->runningSampleIdx += 1;
+    }
+
+    // Write Region2
+    DWORD region2SampleCount = region2Size / soundOutput->BytesPerSample;
+    writePointer = (INT16*)region2;
+    for (DWORD i = 0; i < region2SampleCount; i++) {
+      float t = 2.0f * PI32 * (float)soundOutput->runningSampleIdx /
+                (float)soundOutput->wavePeriod;
+      float sineVal = sinf(t);
+      INT16 sampleVal = (INT16)(soundOutput->maxAbsVolume * sineVal);
+      *writePointer++ = sampleVal; // Left
+      *writePointer++ = sampleVal; // Right
+      soundOutput->runningSampleIdx += 1;
+    }
+
+    // Unlock the buffer
+    GlobalSecondaryBuffer->Unlock(region1, region1Size, region2, region2Size);
+  }
+}
 #pragma endregion Audio Stuff
 
 #pragma region Bitmap Stuff
@@ -184,9 +248,10 @@ Win32GetWindowDiemnsion(HWND window)
   return { width, height };
 }
 
+// FIXME: Function only for test drawing
 static void
 RenderGradient(win32_offscreen_buffer buffer, int xOffset, int yOffset)
-{ // FIXME: Function only for test drawing
+{
   UINT8* row = (UINT8*)buffer.bitmap;
   for (int y = 0; y < buffer.height; y++) {
     UINT32* pixel = (UINT32*)row;
@@ -297,6 +362,7 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
       // EndPaint(window, &paint);
 
       // Display buffer to window
+
       win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
       Win32CopyBufferToWindow(
         deviceContext, &GlobalBackBuffer, dimension.width, dimension.height);
@@ -355,13 +421,6 @@ WinMain(HINSTANCE instance,
         LPSTR lpCmdLine,
         int nShowCmd)
 {
-  // TODO: Const variables
-  const int SamplesPerSecond = 48000;
-  // int16 int16  int16 int16
-  // [Left Right] [Left Right]
-  const int BytesPerSample = sizeof(INT16) * 2;
-  const INT32 SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
-
   // Dynamically load several functions
   Win32LoadXInput();
   // Init backbuffer
@@ -391,21 +450,16 @@ WinMain(HINSTANCE instance,
 
     if (window) {
       GlobalRunning = true;
-
-      Win32InitDSound(window, SamplesPerSecond, SecondaryBufferSize);
-      GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
-
       // FIXME: Test variable
       // Graphic test
       int xOffset = 0, yOffset = 0;
-      // Sound test
-      int toneHz = 256;
-      UINT32 runningSampleIdx = 0;
-      int wavePeriod =
-        SamplesPerSecond /
-        toneHz; // Sample time per circle: Samples Per Second / Frequency
-      int halfWavePeriod = wavePeriod / 2;
-      int maxAbsVolume = 3000;
+      // Audio test
+      win32_sound_output soundOutput;
+
+      Win32InitDSound(
+        window, soundOutput.SecondaryBufferSize, soundOutput.SamplesPerSecond);
+      Win32FillSoundBuffer(&soundOutput, 0, soundOutput.SecondaryBufferSize);
+      GlobalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
       while (GlobalRunning) {
         MSG message;
@@ -484,79 +538,45 @@ WinMain(HINSTANCE instance,
 #pragma endregion Controller Input Stuff
 
         // FIXME: Test drawing
+#pragma region Test : Drawing
         HDC dc = GetDC(window);
         win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
         RenderGradient(GlobalBackBuffer, xOffset, yOffset);
         Win32CopyBufferToWindow(
           dc, &GlobalBackBuffer, dimension.width, dimension.height);
         ReleaseDC(window, dc);
+#pragma endregion Drawing
 
         // FIXME: Tast sound playing
+#pragma region Test : Sound playing
         DWORD playCursor;
         DWORD writeCursor; // Ignored this since we are going to write the
-                           // buffer on our own.
+                           // buffer on our own.s
         HRESULT bufferCurrentPosIsGet =
           GlobalSecondaryBuffer->GetCurrentPosition(&playCursor, &writeCursor);
         if (SUCCEEDED(bufferCurrentPosIsGet)) {
-          DWORD byteToLock =
-            runningSampleIdx * BytesPerSample % SecondaryBufferSize;
-          DWORD bytesTOWrite; // Maximized
-          if (byteToLock == playCursor) {
-            bytesTOWrite = SecondaryBufferSize;
-          } else if (byteToLock > playCursor) {
-            // | *** playCursor ->_ _ _ byteToLock *** |
+          // TODO: Use a lower latency offset.
+          // Offet in the buffer, end of written part.
+          DWORD offset =
+            (soundOutput.runningSampleIdx * soundOutput.BytesPerSample) %
+            soundOutput.SecondaryBufferSize;
+          DWORD bytesTOWrite = 0; // Maximized
+          if (offset == playCursor) {
+            bytesTOWrite = 0;
+          } else if (offset > playCursor) {
+            // | *** playCursor ->_ _ _ offset *** |
             bytesTOWrite =
-              (SecondaryBufferSize - byteToLock) + (playCursor - 0);
+              (soundOutput.SecondaryBufferSize - offset) + (playCursor - 0);
           } else {
-            // | _ _ _ byteToLock *** playCursor ->_ _ _|
-            bytesTOWrite = playCursor - byteToLock;
+            // | _ _ _ offset *** playCursor ->_ _ _|
+            bytesTOWrite = playCursor - offset;
           }
 
-          VOID* /*out*/ region1;
-          DWORD /*out*/ region1Size;
-          VOID* /*out*/ region2;
-          DWORD /*out*/ region2Size;
-          // Lock the buffer
-          HRESULT bufferIsLock = GlobalSecondaryBuffer->Lock(byteToLock,
-                                                             bytesTOWrite,
-                                                             &region1,
-                                                             &region1Size,
-                                                             &region2,
-                                                             &region2Size,
-                                                             0);
-          if (SUCCEEDED(bufferIsLock)) {
-            // Write Region1
-            DWORD region1SampleCount = region1Size / BytesPerSample;
-            INT16* writePointer = (INT16*)region1;
-            for (DWORD i = 0; i < region1SampleCount; i++) {
-              float t =
-                2.0f * PI32 * (float)runningSampleIdx / (float)wavePeriod;
-              float sineVal = sinf(t);
-              INT16 sampleVal = (INT16)(maxAbsVolume * sineVal);
-              *writePointer++ = sampleVal; // Left
-              *writePointer++ = sampleVal; // Right
-              runningSampleIdx += 1;
-            }
-
-            // Write Region2
-            DWORD region2SampleCount = region2Size / BytesPerSample;
-            writePointer = (INT16*)region2;
-            for (DWORD i = 0; i < region2SampleCount; i++) {
-              float t =
-                2.0f * PI32 * (float)runningSampleIdx / (float)wavePeriod;
-              float sineVal = sinf(t);
-              INT16 sampleVal = (INT16)(maxAbsVolume * sineVal);
-              *writePointer++ = sampleVal; // Left
-              *writePointer++ = sampleVal; // Right
-              runningSampleIdx += 1;
-            }
-
-            // Unlock the buffer
-            GlobalSecondaryBuffer->Unlock(
-              region1, region1Size, region2, region2Size);
-          }
+          Win32FillSoundBuffer(&soundOutput, offset, bytesTOWrite);
         }
       }
+#pragma endregion Sound playing
+
     } else {
       // TODO: Logging
     }
