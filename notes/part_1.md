@@ -1,6 +1,16 @@
+## TODO-List
+
+​	Comment style: **TODO🚨** 
+
+1. Explain params of `WinMain`.
+2. Change the functions parts from `xxx()` to `xxx` function.
+3. What is a generated instruction?
+
+
+
 ## Chap#000 Misc: Interesting Topics
 
-#### Section#1 Windows Data Types for String
+#### Section#01 Windows Data Types for String
 
 ​	https://learn.microsoft.com/en-us/windows/win32/intl/windows-data-types-for-strings
 
@@ -14,7 +24,7 @@ Difference between Windows Code Pages and Unicode
 
 - the basic unit of operation is a 16-bit character for Unicode and an 8-bit character for Windows code pages.
 
-#### Section#2 Conventions for Function Prototypes
+#### Section#02 Conventions for Function Prototypes
 
 ​	https://learn.microsoft.com/en-us/windows/win32/intl/conventions-for-function-prototypes
 
@@ -41,6 +51,111 @@ BOOL SetWindowTextW(
 - Windows code page prototype uses the type LPCSTR.
 - Unicode prototype uses LPCWSTR.
 
+#### Section#03 Query Performance
+
+LARGE_INTEGER
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-large_integer-r1
+
+  ```c++
+  typedef union _LARGE_INTEGER {
+    struct {
+      DWORD LowPart;
+      LONG  HighPart;
+    } DUMMYSTRUCTNAME;
+    struct {
+      DWORD LowPart;
+      LONG  HighPart;
+    } u;
+    LONGLONG QuadPart;
+  } LARGE_INTEGER;
+  ```
+
+- Remarks
+
+  >If your compiler has built-in support for 64-bit integers, use the `QuadPart` member to store the 64-bit integer. Otherwise, use the `LowPart` and `HighPart` members to store the 64-bit integer.
+
+`QueryPerformanceFrequency` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency
+
+- Retrieves the frequency of the performance counter.
+
+- Remarks:
+
+  - Fixed
+  - Need only be queried upon application initialization
+  - Cache the result
+
+- Use case
+
+  ```
+  LARGE_INTEGER perfFrequencyResult;
+  QueryPerformanceFrequency(&perfFrequencyResult);
+  GlobalPerfFrequency = perfFrequencyResult.QuadPart;
+  ```
+
+`QueryPerformanceCounter` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter
+- Retrieves the current value of the performance counter.
+
+`__rdtsc` function
+
+- Syntax: https://learn.microsoft.com/en-us/cpp/intrinsics/rdtsc?view=msvc-170
+- **TODO🚨** Generates the `rdtsc` instruction, which returns the processor time stamp. The processor time stamp records the number of clock cycles since the last reset.
+
+Query FPS, MSPF and MCPF
+
+```c++
+// Init Retrieves performance frequency.
+LARGE_INTEGER perfFrequencyResult;
+QueryPerformanceFrequency(&perfFrequencyResult);
+GlobalPerfFrequency = perfFrequencyResult.QuadPart;
+
+LARGE_INTEGER lastCounter;
+QueryPerformanceCounter(&lastCounter);
+UINT64 lastCycleCount = __rdtsc();
+while (running) {
+    // Rendering Stuff
+    // Audio Stuff
+    // Handle User Input
+    // ...
+    
+    LARGE_INTEGER endCounter;
+    QueryPerformanceCounter(&endCounter);
+    INT64 counterElapsed = endCounter.QuadPart - lastCounter.QuadPart;
+    UINT64 endCycleCount = __rdtsc();
+    UINT64 cyclesElapsed = endCycleCount - lastCycleCount;
+
+    // Milliseconds per frame
+    float mspf =
+        (1000.0f * (float)counterElapsed) / (float)GlobalPerfFrequency;
+    // Frames per second
+    float fps = (float)GlobalPerfFrequency / (float)counterElapsed;
+    // Mega-Cycles per frame
+    float mcpf = (float)cyclesElapsed / (1000.0f * 1000.0f);
+
+    // Display debug data
+    char buffer[256];
+    sprintf(buffer, "%.2fms/f, %.2ff/s, %.2fmc/f\n", mspf, fps, mcpf);
+    OutputDebugStringA(buffer);
+    // Update performance data of current frame.
+    lastCounter = endCounter;
+    lastCycleCount = endCycleCount;
+}
+```
+
+- Result
+
+  ![mspf-fps-mcpf](part_1.assets/mspf-fps-mcpf.png)
+
+- Verification
+
+  - CPU Specification: 
+    - Base Clock: 3.2GHz
+  - $325.55 \times 9.81 \times (1,000,000) = 3,193,645,500\approx 3.2 \times (1,000,000,000)$
+
 ## Chap#001 Setting up the Windows build
 
 #### Section#1 The entry point -- `WinMain`
@@ -56,8 +171,13 @@ WinMain(HINSTANCE instance,
 ```
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-winmain?source=recommendations
+- User-provided entry point for a graphical Windows-based application.
+- Remarks: your `WinMain` should...
+  1. Initialize the application.
+  2. Display its main window.
+  3. Enter a message retrieval-and-dispatch loop.
+- **TODO🚨** Params?
 - what is CALLBACK?:
-
   - https://stackoverflow.com/questions/13871617/winmain-and-main-in-c-extended
 
 #### Section#2 Build tool
