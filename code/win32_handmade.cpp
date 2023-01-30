@@ -7,6 +7,29 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "handmade.cpp"
+
+/* TODO WIN PLAYFORM LAYER SHOULD DO:
+  - A backbuffer to render.
+  - A soundbuffer to player.
+  - Time.
+  - Saved game location.
+  - Getting handle to own executable file.
+  - Asset loading path.
+  - multi threading.
+  - Raw input (support for multiple keyboards)
+  - Sleep/timeBeginPeriod.
+  - ClipCursor (multimonitor support)
+  - Fullscreen support.
+  - Control cursor visibility (WM_SETCURSOR).
+  - When we are not the active app (WM_ACTIVATE).
+  - QueryCancelAutoplay.
+  - Blit speed improvement.
+  - Hardware acceleration (Direct3D/OpenGL).
+  - GetKeyboardLayout (french keyboards/international wasd).
+  - ...
+ */
+
 struct win32_offscreen_buffer
 {
   BITMAPINFO bmi;
@@ -263,25 +286,6 @@ Win32GetWindowDiemnsion(HWND window)
   int height = clientRect.bottom - clientRect.top;
 
   return { width, height };
-}
-
-// FIXME Function only for test drawing
-static void
-RenderGradient(win32_offscreen_buffer buffer, int xOffset, int yOffset)
-{
-  UINT8* row = (UINT8*)buffer.bitmap;
-  for (int y = 0; y < buffer.height; y++) {
-    UINT32* pixel = (UINT32*)row;
-
-    for (int x = 0; x < buffer.width; x++) {
-      UINT8 blueCannel = (UINT8)(x + xOffset);
-      UINT8 greenCannel = (UINT8)(y + yOffset);
-
-      *pixel = (greenCannel << 8) | blueCannel;
-      pixel += 1;
-    }
-    row += buffer.pitch;
-  }
 }
 
 static void
@@ -572,7 +576,14 @@ WinMain(HINSTANCE instance,
 #pragma region TEST Render Gradient
         HDC dc = GetDC(window);
         win32_window_dimension dimension = Win32GetWindowDiemnsion(window);
-        RenderGradient(GlobalBackBuffer, bufferOffsetX, bufferOffsetY);
+
+        game_back_buffer game_back_buffer = {};
+        game_back_buffer.bitmap = GlobalBackBuffer.bitmap;
+        game_back_buffer.width = GlobalBackBuffer.width;
+        game_back_buffer.height = GlobalBackBuffer.height;
+        game_back_buffer.pitch = GlobalBackBuffer.pitch;
+        Game_Update_And_Render(&game_back_buffer);
+
         Win32CopyBufferToWindow(
           dc, &GlobalBackBuffer, dimension.width, dimension.height);
         ReleaseDC(window, dc);

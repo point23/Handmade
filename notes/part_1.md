@@ -1122,5 +1122,124 @@ Process
 6. Write to the sound buffer.
 7. Unlock the region to write.
 
+## Chap#006 Platform API
+
+#### Section#01 Cross-platform
+
+[Not Recommend] **Preprocessor directives**
+
+> Problem: it dictates the control flow must be equivalent across all platforms.
+
+​	https://cplusplus.com/doc/tutorial/preprocessor/
+
+- Use case
+
+  ```c++
+  #if HANDMADE_WIN
+  	...
+  #else if HANDMADE_LINUX
+  	...
+  #else if HANDMADE_MAXOSX
+  	...
+  #endif
+  ```
+
+`CL /D`
+
+​	https://www.geoffchappell.com/studies/msvc/cl/cl/options/d.htm?tx=25
+
+- The `/D` option directs the compiler to define *name* as a preprocessor macro of the sort that has no argument list (as opposed to an empty argument list).
+
+A Better Solution: "Called In"
+
+```c++
+// handmade.h
+void* 
+Platform_Load_File(char* filename);
+
+// handmade.cpp
+#include <handmade.h>
+void
+Main_Loop(void) 
+{
+    void* file_contents = Platform_Load_File('foo.bmp');
+}
+
+// win32_handmade.cpp
+#include <Handmap.cpp>
+void*
+Platform_Load_File(char* filename) 
+{
+    // Platform specific, optimized impl.
+}
+
+int CALLBACK
+WinMain(HINSTANCE instance,
+        HINSTANCE prevInstance,
+        LPSTR lpCmdLine,
+        int nShowCmd)
+{
+    // Win32 Setup
+    for (;;) {
+        Main_Loop();
+    }
+}
+
+// linux_handmade.cpp
+#include <handmade.cpp>
+void*
+Platform_Load_File(char* filename) 
+{
+    // Platform specific, optimized impl.
+}
+
+int main() 
+{
+    // linux setup
+    for (;;) {
+        Main_Loop();
+    }
+    return 0;
+}
+```
+
+Another Better Solution: "Call Out"
+
+```c++
+// handmade.h
+struct platform_window;
+
+platform_window* 
+Platform_Open_Window(char* title);
+
+void
+Platform_Close_Window(platform_window* window);
+
+// handmade.cpp
+#include <handmade.h>
+
+// win32_handmade.cpp
+struct platform_window 
+{
+    HWND handle;
+    // ...
+}
+
+platform_window*
+Platform_Open_Window(char* title) 
+{
+    platform_window* result = /* Allocate */; 
+	return result;
+}
+
+void
+Platform_Close_Window(platform_window* window)
+{
+    
+}
+```
+
+
+
 
 
