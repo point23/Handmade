@@ -1103,7 +1103,7 @@ Process
    2. create sound buffer
    3. set wave-format
 5. Create secondary buffer.
-6. Start playing sounds.
+6. Start filling and playing sounds.
 
 #### Section#05 Filling and Playing
 
@@ -1235,11 +1235,10 @@ Platform_Open_Window(char* title)
 void
 Platform_Close_Window(platform_window* window)
 {
-    
 }
 ```
 
-
+#### Section#02 OUR IMPL
 
 
 
