@@ -1113,14 +1113,15 @@ Process
 
 1. Let the sound buffer play.
 2. Get the play cursor of secondary sound buffer.
-3. Calculate the byte to lock.
-4. Calculate bytes to write:
-   1. `byteToLock == playCursor`
-   2. `byteToLock > playCursor`
-   3. `byteToLock < playCursor`
-5. Lock the region to write.
-6. Write to the sound buffer.
-7. Unlock the region to write.
+3. Calculate the byte to lock (offset).
+4. Get a target cursor to write with a reasonable latency from the play cursor
+5. Calculate bytes to write:
+   1. `target byteToLock > playCursor`
+   2. `byteToLock < playCursor`
+
+6. Lock the region to write.
+7. Write to the sound buffer.
+8. Unlock the region to write.
 
 ## Chap#006 Platform API
 
@@ -1150,95 +1151,93 @@ Process
 
 - The `/D` option directs the compiler to define *name* as a preprocessor macro of the sort that has no argument list (as opposed to an empty argument list).
 
-A Better Solution: "Called In"
+**Called In**
 
 ```c++
 // handmade.h
-void* 
-Platform_Load_File(char* filename);
+void* Platform_Load_File(char* filename);
 
 // handmade.cpp
 #include <handmade.h>
-void
-Main_Loop(void) 
-{
+void Game_Update(void) {
     void* file_contents = Platform_Load_File('foo.bmp');
 }
 
 // win32_handmade.cpp
 #include <Handmap.cpp>
-void*
-Platform_Load_File(char* filename) 
-{
+void* Platform_Load_File(char* filename)  {
     // Platform specific, optimized impl.
 }
-
-int CALLBACK
-WinMain(HINSTANCE instance,
-        HINSTANCE prevInstance,
-        LPSTR lpCmdLine,
-        int nShowCmd)
-{
-    // Win32 Setup
+int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR lpCmdLine, int nShowCmd) {
     for (;;) {
-        Main_Loop();
+        Game_Update();
     }
 }
 
 // linux_handmade.cpp
 #include <handmade.cpp>
-void*
-Platform_Load_File(char* filename) 
-{
+void* Platform_Load_File(char* filename)  {
     // Platform specific, optimized impl.
 }
-
-int main() 
-{
-    // linux setup
+int main() {
     for (;;) {
-        Main_Loop();
+        Game_Update();
     }
     return 0;
 }
 ```
 
-Another Better Solution: "Call Out"
+**Call Out**
 
 ```c++
 // handmade.h
 struct platform_window;
-
-platform_window* 
-Platform_Open_Window(char* title);
-
-void
-Platform_Close_Window(platform_window* window);
+platform_window* Platform_Open_Window(char* title);
+void Platform_Close_Window(platform_window* window);
 
 // handmade.cpp
 #include <handmade.h>
-
-// win32_handmade.cpp
-struct platform_window 
-{
-    HWND handle;
-    // ...
+void Game_Main() {
+    platform_window* = platform_open_window("handmade");
+    for (;;) { // game loop
+    }
 }
 
+// win32_handmade.cpp
+#include <handmade.cpp>
+struct platform_window  {
+    HWND handle;
+    // ...
+};
 platform_window*
-Platform_Open_Window(char* title) 
-{
+Platform_Open_Window(char* title) {
     platform_window* result = /* Allocate */; 
 	return result;
 }
 
 void
-Platform_Close_Window(platform_window* window)
-{
+Platform_Close_Window(platform_window* window){
 }
 ```
 
 #### Section#02 OUR IMPL
 
+sound-buffer
 
+back-buffer
+
+#### Section#04 User input
+
+**Bad Impl**
+
+```c++
+for (int event_idx = 0; event_idx < event_count; event_idx++) {
+    switch(events[event_idx].type) {
+            case: Stick_X:{
+                // ...
+    		} break;
+            // ...
+    }
+}
+```
 
