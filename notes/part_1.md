@@ -5,28 +5,29 @@
 1. Explain params of `WinMain`.
 2. Change the functions parts from `xxx()` to `xxx` function.
 3. What is a generated instruction?
-
-
+4. Platform independent API?
+5. Characters... come on...
+6. 
 
 ## Chap#000 Misc: Interesting Topics
 
 #### Section#01 Windows Data Types for String
 
-​	https://learn.microsoft.com/en-us/windows/win32/intl/windows-data-types-for-strings
+- Doc: https://learn.microsoft.com/en-us/windows/win32/intl/windows-data-types-for-strings
 
-3 sets of character
+**3 sets of character**
 
 1. Generic Type
-2. Unicode
-3. Windows code pages
+2. Unicode: 16-bit
+3. Windows code pages, ASCII strings?: 8bit
 
-Difference between Windows Code Pages and Unicode
+**Difference between Windows Code Pages and Unicode**
 
-- the basic unit of operation is a 16-bit character for Unicode and an 8-bit character for Windows code pages.
+- The basic unit of operation is a 16-bit character for Unicode and an 8-bit character for Windows code pages.
 
 #### Section#02 Conventions for Function Prototypes
 
-​	https://learn.microsoft.com/en-us/windows/win32/intl/conventions-for-function-prototypes
+- Doc: https://learn.microsoft.com/en-us/windows/win32/intl/conventions-for-function-prototypes
 
 > New Windows applications should use Unicode to avoid the inconsistencies of varied code pages and for ease of localization. They should be written with generic functions, and should define UNICODE to compile the functions into Unicode functions. In the few places where an application must work with 8-bit character data, it can make explicit use of the functions for Windows code pages.
 
@@ -35,7 +36,7 @@ Difference between Windows Code Pages and Unicode
 #define SetWindowText SetWindowTextW
 #else
 #define SetWindowText SetWindowTextA
-#endif // !UNICODE
+#endif
 
 BOOL SetWindowTextA(
   HWND hwnd,
@@ -53,7 +54,7 @@ BOOL SetWindowTextW(
 
 #### Section#03 Query Performance
 
-LARGE_INTEGER
+*LARGE_INTEGER* Struct
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-large_integer-r1
 
@@ -100,49 +101,55 @@ LARGE_INTEGER
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter
 - Retrieves the current value of the performance counter.
 
-`__rdtsc` function
+`__rdtsc ` function
 
 - Syntax: https://learn.microsoft.com/en-us/cpp/intrinsics/rdtsc?view=msvc-170
-- **TODO🚨** Generates the `rdtsc` instruction, which returns the processor time stamp. The processor time stamp records the number of clock cycles since the last reset.
+- **TODO🚨** Generates the `rdtsc` instruction, which returns the processor time stamp. The processor <u>time stamp</u> records the number of <u>clock cycles</u> since the last reset.
 
 Query FPS, MSPF and MCPF
 
 ```c++
-// Init Retrieves performance frequency.
-LARGE_INTEGER perfFrequencyResult;
-QueryPerformanceFrequency(&perfFrequencyResult);
-GlobalPerfFrequency = perfFrequencyResult.QuadPart;
+// Retrieves performance frequency.
+LARGE_INTEGER perf_frequency_res;
+QueryPerformanceFrequency(&perf_frequency_res);
+Global_Perf_Frequency = perf_frequency_res.QuadPart;
 
-LARGE_INTEGER lastCounter;
-QueryPerformanceCounter(&lastCounter);
-UINT64 lastCycleCount = __rdtsc();
+// @note Debug stuff, query last clock-cycle count;
+LARGE_INTEGER last_counter;
+QueryPerformanceCounter(&last_counter);
+UINT64 last_cycle_count = __rdtsc();
+
+
 while (running) {
     // Rendering Stuff
     // Audio Stuff
     // Handle User Input
     // ...
     
-    LARGE_INTEGER endCounter;
-    QueryPerformanceCounter(&endCounter);
-    INT64 counterElapsed = endCounter.QuadPart - lastCounter.QuadPart;
-    UINT64 endCycleCount = __rdtsc();
-    UINT64 cyclesElapsed = endCycleCount - lastCycleCount;
+   { // Display debug data
+      /* @note query performance data. */
+      LARGE_INTEGER end_counter;
+      QueryPerformanceCounter(&end_counter);
+      INT64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+      UINT64 end_cycle_count = __rdtsc();
+      UINT64 cycles_elapsed = end_cycle_count - last_cycle_count;
 
-    // Milliseconds per frame
-    float mspf =
-        (1000.0f * (float)counterElapsed) / (float)GlobalPerfFrequency;
-    // Frames per second
-    float fps = (float)GlobalPerfFrequency / (float)counterElapsed;
-    // Mega-Cycles per frame
-    float mcpf = (float)cyclesElapsed / (1000.0f * 1000.0f);
+      // Milliseconds per frame
+      float mspf =
+        (1000.0f * (float)counter_elapsed) / (float)Global_Perf_Frequency;
+      // Frames per second
+      float fps = (float)Global_Perf_Frequency / (float)counter_elapsed;
+      // Mega-Cycles per frame
+      float mcpf = (float)cycles_elapsed / (1000.0f * 1000.0f);
 
-    // Display debug data
-    char buffer[256];
-    sprintf(buffer, "%.2fms/f, %.2ff/s, %.2fmc/f\n", mspf, fps, mcpf);
-    OutputDebugStringA(buffer);
-    // Update performance data of current frame.
-    lastCounter = endCounter;
-    lastCycleCount = endCycleCount;
+      // char perf_log[256];
+      // sprintf(perf_log, "%.2fms/f, %.2ff/s, %.2fmc/f\n", mspf, fps, mcpf);
+      // Win32_Debug_Log(perf_log);
+
+      // Update performance data of current frame.
+      last_counter = end_counter;
+      last_cycle_count = end_cycle_count;
+    }
 }
 ```
 
@@ -163,9 +170,10 @@ while (running) {
 ```c++
 int CALLBACK
 WinMain(HINSTANCE instance,
-        HINSTANCE prevInstance, 
-        LPSTR     lpCmdLine,
-        int       nShowCmd) {
+        HINSTANCE prev_instance,
+        LPSTR cmd_line,
+        int show_cmd)
+{
     return 0;
 }
 ```
@@ -244,12 +252,13 @@ popd
 - Use case:
 
   - ```c++
-    WNDCLASS WindowClass = {};
-    WindowClass.style = CS_HREDRAW|CS_VREDRAW;
-    WindowClass.lpfnWndProc = MainWindowCallback;
-    WindowClass.hInstance = hInstance;
-    WindowClass.lpszClassName = "HandmadeWIndowClass";
-    // WindowClass.hIcon
+    WNDCLASS window_class = {};
+    window_class.style =
+        CS_HREDRAW | CS_VREDRAW; // Redraw when adjust or move happend vertically or
+    // horizontally.
+    window_class.lpfnWndProc = Win32_Main_Window_Callback;
+    window_class.hInstance = instance;
+    window_class.lpszClassName = "Handmade_Window_Class";
     ```
   
 - Windows class style
@@ -266,40 +275,21 @@ popd
 
     ```c++
     LRESULT CALLBACK
-    Win32MainWindowCallback(HWND 	window,
-                       		UINT 	message,
-                       		WPARAM 	wParam,
-                       		LPARAM 	lParam)
+    Win32_Main_Window_Callback(HWND window,
+                               UINT message,
+                               WPARAM w_param,
+                               LPARAM l_param)
     {
-        LRESULT result = 0;
-        switch(message)
-        {
-            case WM_SIZE:
-            {
-                OutputDebugStringA("SIZE\n");
-            } break;
-            
-            case WM_DESTROY: {
-                OutputDebugStringA("DESTROY\n");
-            } break;
-    
-            case WM_CLOSE: {
-                OutputDebugStringA("CLOSE\n");
-            } break;
-    
-            case WM_ACTIVATEAPP: {
-             	OutputDebugStringA("ACTIVATE\n");
-            } break;
-    
-            default: {
-                result = DefWindowProc(window, message, wParam, lParam);
-            } break;
-        }
-    
-        return result;
+      LRESULT result = 0;
+      switch (message) {
+        case WM_ACTIVATEAPP: {
+          Win32_Debug_Log("Activated.");
+        } break;
+      }
+      return result;
     }
     ```
-  
+    
   - Message categories
   
     - https://learn.microsoft.com/en-us/windows/win32/winmsg/about-messages-and-message-queues#system-defined-messages
@@ -339,55 +329,33 @@ popd
 - Use case:
 
   - ```c++
-    HWND windowHandle = 
-        CreateWindowEx(
-            0,
-            windowClass.lpszClassName,
-            "Handmade",
-            WS_OVERLAPPEDWINDOW|WS_VISIBLE,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            0,
-            0,
-            instance,
-            0
-    	);
+    HWND window = CreateWindowEx(0,
+                                 window_class.lpszClassName,
+                                 "Handmade",
+                                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                 CW_USEDEFAULT,
+                                 CW_USEDEFAULT,
+                                 CW_USEDEFAULT,
+                                 CW_USEDEFAULT,
+                                 0,
+                                 0,
+                                 instance,
+                                 0);
+    assert(window);
     ```
 
 #### Section#4 *Handle Messages
 
-Solution#1 Naïve Approach:
-
 ```c++
-for (;;) {
-    MSG message;
-    
-    BOOL messageResult = GetMessage(&message, 0, 0, 0);
-    if (messageResult > 0) {
-        TranslateMessage(&message);
-        DispatchMessage(&message);
-    }
-    else {
-        break;
-    }
-}
-```
-
-Solution#2 Without blocking
-
-```c++
-while (running) {
-    MSG message;
-    
+while (Global_Running) {
+    MSG message = {};
+    // @note Peek the newest message from queue without pending the application
     while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-        if (message.message == WM_QUIT) {
-            running = false;
-        }
+      if (message.message == WM_QUIT)
+        Global_Running = false;
 
-        TranslateMessage(&message);
-        DispatchMessage(&message);
+      TranslateMessage(&message);
+      DispatchMessage(&message);
     }
 }
 ```
@@ -469,7 +437,7 @@ Solution#1 `PostQuitMessage(nExitCode)`
 
 - exit codes is no concern
 
-*Solution#2 with a global variable - `static bool running;`
+*Solution#2 with a global variable - `global bool Global_Running;`
 
 >  use these to separate 3 kinds of "static":
 >
@@ -477,42 +445,41 @@ Solution#1 `PostQuitMessage(nExitCode)`
 >  #define global_variable  static
 >  #define internal       	   static
 
-- inside the `MainWindowCallback` function
+- inside the `Win32_Main_Window_Callback` function
 
   ```c++
   case WM_DESTROY: {
-      running = false;
+      Global_Running = false;
       OutputDebugStringA("WM_DESTROY\n");
   } break;
   
   case WM_CLOSE: {
-      // TODO: Handle this with a message to user
-      running = false;
+      Global_Running = false;
       OutputDebugStringA("WM_CLOSE\n");
   } break;
   ```
-
+  
 - inside the entry point, the `WinMain`
 
   - from: `for(;;)`
-  - to: `while(running)`
+  - to: `while(Global_Running)`
 
 ## Chap#003 Backbuffer: Allocating and Animating
 
 #### Section#1 the Global backbuffer
 
  ```c++
- struct win32_offscreen_buffer
+ struct win32_back_buffer
  {
    BITMAPINFO bmi;
    void* bitmap;
    int width;
    int height;
-   int bytesPerPixel;
+   int bytes_per_pixel;
    int pitch;
  };
  
- static win32_offscreen_buffer GlobalBackBuffer;
+ static win32_back_buffer Global_Back_Buffer;
  ```
 
 #### Section#2 Windows GDI
@@ -606,12 +573,12 @@ Solution#1 Naïve Approach:
 3. Init bitmapInfo structure (mainly on bitmapHeader)
 4. Create new DIBSection
 
-`GetClientRect()`
+`GetClientRect` function
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclientrect
 - Retrieves the coordinates of a window's client area.
 
-`CreateDIBSection()`
+`CreateDIBSection` function
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection
 - Create a DIB that your application can write to. 
@@ -685,26 +652,22 @@ Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
   ![blue-green gradient rendering](part_1.assets/blue-green%20gradient%20rendering.png)
 
   ```c++
-  { // FIXME: Test drawing
-      int pitch = bitmapWidth * bytesPerPixel;
-      UINT8* row = (UINT8*)bitmapMemory;
-      for (int y = 0; y < bitmapHeight; y++) {
-          UINT8* pixel = (UINT8*)row;
+  static void Render_Gradient(Game_Back_Buffer *buffer)
+  {
+      uint8 *row = (uint8 *)(buffer->bitmap);
+      for (int y = 0; y < buffer->height; y++)
+      {
+          uint *pixel = (uint *)row;
   
-          for (int x = 0; x < bitmapWidth; x++) {
-              *pixel = (UINT8)x;
-              pixel += 1;
+          for (int x = 0; x < buffer->width; x++)
+          {
+              uint8 blueCannel = (uint8)(x + Global_Blue_Offset);
+              uint8 greenCannel = (uint8)(y + Global_Green_Offset);
   
-              *pixel = (UINT8)y;
-              pixel += 1;
-  
-              *pixel = 0;
-              pixel += 1;
-  
-              *pixel = 0;
-              pixel += 1;
+              // @note Little-endian RGB: GB|AR
+              *pixel++ = (greenCannel << 8) | blueCannel;
           }
-          row += pitch;
+          row += buffer->pitch;
       }
   }
   ```
@@ -714,19 +677,19 @@ Process:
 1. Copy the source DIB Section to destination.
 
 ```c++
-static void
-Win32CopyBufferToWindow(HDC deviceContext,
-                        win32_offscreen_buffer* buffer,
-                        int windowWidth,
-                        int windowHeight)
+internal void
+Win32_Copy_Buffer_To_Window(HDC deviceContext,
+                            Win32_Back_Buffer* buffer,
+                            int window_width,
+                            int window_height)
 {
-  // TODO: Acspect ratio correction
+  // @todo Aspect ratio correction
   StretchDIBits(deviceContext,
                 // Destination rectangle
                 0,
                 0,
-                windowWidth,
-                windowHeight,
+                window_width,
+                window_height,
                 // Source rectangle
                 0,
                 0,
@@ -739,7 +702,6 @@ Win32CopyBufferToWindow(HDC deviceContext,
                 DIB_RGB_COLORS,
                 SRCCOPY);
 }
-
 ```
 
 `StretchDIBits()`
@@ -767,7 +729,7 @@ References:
 - Functions: https://learn.microsoft.com/en-us/windows/win32/xinput/functions
 - Structures: https://learn.microsoft.com/en-us/windows/win32/xinput/structures
 
-XINPUT_STATE
+*XINPUT_STATE* struct
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/xinput/ns-xinput-xinput_state
 
@@ -780,7 +742,7 @@ XINPUT_STATE
 
   - The packet number indicates whether there have been any changes in the state of the controller. 
 
-XINPUT_GAMEPAD
+*XINPUT_GAMEPAD* Struct
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/xinput/ns-xinput-xinput_gamepad
 
@@ -802,21 +764,24 @@ XINPUT_GAMEPAD
 Use case:
 
 ```c++
-for (DWORD controllerIdx = 0; controllerIdx < XUSER_MAX_COUNT; controllerIdx++) {
-    DWORD result;
-    XINPUT_STATE controllerState;
+ for (int it_idx = 0; it_idx < max_controller_count; it_idx++) {
+        Game_Controller_Input* old_controller = &old_input->controllers[it_idx];
+        Game_Controller_Input* new_controller = &new_input->controllers[it_idx];
 
-    result = XInputGetState(controllerIdx, &controllerState);
-    if (result == ERROR_SUCCESS) {
+        XINPUT_STATE controller_state;
+        DWORD result = XInputGetState(it_idx, &controller_state);
+        if (result != ERROR_SUCCESS)
+          continue;
+
         // Controller is connected
+        XINPUT_GAMEPAD* gamepad = &controller_state.Gamepad;
 
-        XINPUT_GAMEPAD* gamepad = &controllerState.Gamepad;
         // D-pad
-        bool dPadUp = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-        bool dPadDown = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-        bool dPadLeft = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-        bool dPadRight = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-}
+        bool dpad_up = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+        bool dpad_down = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+        bool dpad_left = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+        bool dpad_right = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+ }
 ```
 
 #### Section#2 *Dynamically Load Right Version of XInput
@@ -827,7 +792,7 @@ for (DWORD controllerIdx = 0; controllerIdx < XUSER_MAX_COUNT; controllerIdx++) 
 
 - Find libs in C:\Windows with `dir`
 
-`LoadLibrary()`
+`LoadLibrary` function
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
 
@@ -837,7 +802,7 @@ for (DWORD controllerIdx = 0; controllerIdx < XUSER_MAX_COUNT; controllerIdx++) 
   );
   ```
 
-`GetProcAddress()`
+`GetProcAddress` fucntion
 
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
 
@@ -861,6 +826,7 @@ X_INPUT_GET_STATE(XInputGetStateStub)
 }
 static x_input_get_state* XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
+// XInputSetState
 
 static void
 Win32LoadXInput(void)
@@ -870,10 +836,9 @@ Win32LoadXInput(void)
     xInputLib = LoadLibrary("xinput1_3.dll");
   }
     
-  if (xInputLib) {
-    XInputGetState =
-      (x_input_get_state*)GetProcAddress(xInputLib, "XInputGetState");
-  }
+  assert(xinput_lib != NULL);
+  XInputGetState =
+        (x_input_get_state*)GetProcAddress(xInputLib, "XInputGetState");
 }
 ```
 
@@ -945,14 +910,14 @@ Requirements
 
 #### Section#02 Direct-Sound structures
 
-DIRECTSOUND
+*DIRECTSOUND* Struct
 
 ​	`IDirectSound8/IDirectSound8`
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418035(v=vs.85)
 - Used to create buffer objects, manage devices, and set up the environment.
 
-DIRECTSOUNDBUFFER
+<u>*DIRECTSOUNDBUFFER*</u> Struct
 
 ​	`IDirectSoundBuffer/IDirectSoundBuffer8`
 
@@ -960,7 +925,7 @@ DIRECTSOUNDBUFFER
 - Used to manage sound buffers.
 - Remarks: for the primary buffer, you must use the `IDirectSoundBuffer` interface.
 
-DSBUFFERDESC
+*DSBUFFERDESC* Struct
 
 - Syntax:
 
@@ -975,9 +940,10 @@ DSBUFFERDESC
 - Use case
 
   ```c++
-  DSBUFFERDESC bufferDescription = {};
-  bufferDescription.dwSize = sizeof(bufferDescription);
-  bufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
+  DSBUFFERDESC buffer_description = {};
+  buffer_description.dwSize = sizeof(buffer_description);
+  buffer_description.dwFlags = DSBCAPS_PRIMARYBUFFER;
+  return dsound->CreateSoundBuffer(&buffer_description, primary_buffer, 0);
   ```
 
 WAVEFORMATEX
@@ -989,40 +955,30 @@ WAVEFORMATEX
 - Use case
 
   ```c++
-  waveFormat.wFormatTag = WAVE_FORMAT_PCM;
-  waveFormat.nChannels = 2;
-  waveFormat.nSamplesPerSec = samplesPerSecond;
-  waveFormat.wBitsPerSample = 16;
-  waveFormat.nBlockAlign =
-  waveFormat.nChannels * waveFormat.wBitsPerSample / 8;
-  waveFormat.nAvgBytesPerSec = samplesPerSecond * waveFormat.nBlockAlign;
-  waveFormat.cbSize = 0;
+  wave_format->wFormatTag = WAVE_FORMAT_PCM;
+  wave_format->nChannels = 2;
+  wave_format->nSamplesPerSec = samples_per_second;
+  wave_format->wBitsPerSample = 16;
+  wave_format->nBlockAlign =
+      wave_format->nChannels * wave_format->wBitsPerSample / 8;
+  wave_format->nAvgBytesPerSec = samples_per_second * wave_format->nBlockAlign;
+  wave_format->cbSize = 0;
   ```
 
 #### Section#03 Direct-Sound functions
 
-`DirectSoundCreate()`
+`Direct_Sound_Create` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/mt708921(v=vs.85)
-
 - Creates and initializes an `IDirectSound` interface.
 
-- Use case
-
-  ```c++
-  LPDIRECTSOUND dSound;
-  if(SUCCEEDED(DirectSoundCreate(0, &dSound, 0))) {
-      // Create Primary&Secondary Buffer.
-  }
-  ```
-
-`IDriectSound:SetCooperativeLevel()`
+`IDriectSound:SetCooperativeLevel` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418049(v=vs.85)
 - Sets the cooperative level of the application for this sound device.
 - *Remark: The application must set the cooperative level by calling this method before its buffers can be played. The recommended cooperative level is DSSCL_PRIORITY.
 
-`IDirectSound:CreateSoundBuffer()`
+`IDirectSound:CreateSoundBuffer` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418039(v=vs.85)
 
@@ -1036,7 +992,7 @@ WAVEFORMATEX
 
 - Creates a sound buffer object to manage audio samples.
 
-`IDirectSound8:SetFormat()`
+`IDirectSound8:SetFormat` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418077(v=vs.85)
 -  DirectSound will set the primary buffer to the specified format.
@@ -1044,7 +1000,7 @@ WAVEFORMATEX
   1. The format of the primary buffer should be set before secondary buffers are created.
   2. *This method is not available for secondary sound buffers. 
 
-`IDircetSoundBuffer8:GetCurrentPosition()`
+`IDircetSoundBuffer8:GetCurrentPosition` fucntion
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418062(v=vs.85)
 
@@ -1059,7 +1015,7 @@ WAVEFORMATEX
 
 - Ignore the write cursor.
 
-`IDirectSoundBuffer8:Lock()`
+`IDirectSoundBuffer8:Lock` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418073(v=vs.85)
 
@@ -1081,12 +1037,12 @@ WAVEFORMATEX
 
   ![get_cur_pos_of_sound_buffer](part_1.assets/get_cur_pos_of_sound_buffer.png)
 
-`IDirectSoundBuffer8:Play()`
+`IDirectSoundBuffer8:Play` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418074(v=vs.85)
 - Causes the sound buffer to play, starting at the play cursor.
 
-`IDirectSoundBuffer8:Unlock()`
+`IDirectSoundBuffer8:Unlock` function
 
 - Syntax: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418153(v=vs.85)
 - Releases a locked sound buffer.
@@ -1151,7 +1107,7 @@ Process
 
 - The `/D` option directs the compiler to define *name* as a preprocessor macro of the sort that has no argument list (as opposed to an empty argument list).
 
-**Called In**
+**Called in**
 
 ```c++
 // handmade.h
@@ -1173,21 +1129,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR lpCmdLine
         Game_Update();
     }
 }
-
-// linux_handmade.cpp
-#include <handmade.cpp>
-void* Platform_Load_File(char* filename)  {
-    // Platform specific, optimized impl.
-}
-int main() {
-    for (;;) {
-        Game_Update();
-    }
-    return 0;
-}
 ```
 
-**Call Out**
+**Call out**
 
 ```c++
 // handmade.h
@@ -1199,6 +1143,7 @@ void Platform_Close_Window(platform_window* window);
 #include <handmade.h>
 void Game_Main() {
     platform_window* = platform_open_window("handmade");
+    // soudn
     for (;;) { // game loop
     }
 }
@@ -1209,6 +1154,7 @@ struct platform_window  {
     HWND handle;
     // ...
 };
+
 platform_window*
 Platform_Open_Window(char* title) {
     platform_window* result = /* Allocate */; 
@@ -1220,13 +1166,22 @@ Platform_Close_Window(platform_window* window){
 }
 ```
 
-#### Section#02 OUR IMPL
+#### Section#02 OUR IMPL: Call In & Pass Out
 
-sound-buffer
+- Pass in what Game-Layer in need: Input...
+- Pass out what Platform-Layer in need: Backbuffer, Soundbuffer...
 
-back-buffer
+*Game_Update* function definition
 
-#### Section#04 User input
+```c++
+// handmade.h
+static void
+Game_Update(Game_Back_Buffer* back_buffer,
+            Game_Sound_Buffer* sound_buffer,
+            Game_Input* input); 
+```
+
+#### Section#03 User input
 
 **Bad Impl**
 
@@ -1240,4 +1195,95 @@ for (int event_idx = 0; event_idx < event_count; event_idx++) {
     }
 }
 ```
+
+**Good Impl**
+
+```c++
+// Structs
+struct Game_Input
+{
+  Game_Controller_Input controllers[4];
+};
+
+struct Game_Controller_Input
+{
+  bool is_analog;
+  // @note Controller hardware is sampling...
+  real32 start_x;
+  real32 start_y;
+  real32 end_x;
+  real32 end_y;
+
+  real32 min_x;
+  real32 min_y;
+  real32 max_x;
+  real32 max_y;
+
+  union
+  {
+    Game_Button_State buttons[6];
+
+    struct
+    {
+      Game_Button_State up;
+      Game_Button_State down;
+      Game_Button_State left;
+      Game_Button_State right;
+      Game_Button_State left_shoulder;
+      Game_Button_State right_shoulder;
+    };
+  };
+};
+
+struct Game_Button_State
+{
+  int half_transition_count;
+  bool ended_down;
+};
+
+static void Handle_Controller_Input(Game_Controller_Input *input)
+{
+    if (input->is_analog)
+    {
+        Global_Tone_Hz = 256 + (int)(128.0f * input->end_y);
+        Global_Blue_Offset += (int)4.0f * input->end_x;
+    }
+
+    if (input->down.ended_down)
+    {
+        Global_Green_Offset += 1;
+    }
+}
+```
+
+#### Section#4 Memory
+
+Problem: Game-Layer are trying to get memory from the platform layer.
+
+- We assume there's no failure at Game-Layer.
+
+Normal Approach
+
+```c++
+struct Game_State {
+    int x_offset;
+    int y_offset;
+    // ...
+};
+
+internal void
+Game_Update(Game_State state/* other params */) {}
+```
+
+Better Approach
+
+```c++
+struct Game_Memory {
+    
+};
+
+Game_Update(Game_Memory memory/* other params */) {}
+```
+
+
 

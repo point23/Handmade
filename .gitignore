@@ -1,5 +1,11 @@
 build/
 
+# Emacs Stuff
+\#*\#
+*~
+.\#*
+*.\~undo-tree\~
+
 # Prerequisites
 *.d
 
