@@ -153,15 +153,23 @@ while (running) {
 }
 ```
 
-- Result
+Result
 
-  ![mspf-fps-mcpf](part_1.assets/mspf-fps-mcpf.png)
+![mspf-fps-mcpf](part_1.assets/mspf-fps-mcpf.png)
 
 - Verification
 
   - CPU Specification: 
     - Base Clock: 3.2GHz
   - $325.55 \times 9.81 \times (1,000,000) = 3,193,645,500\approx 3.2 \times (1,000,000,000)$
+
+#### Section#04 Assert
+
+```
+#define asser(expr) if (!(expr)) {*(int *) 0 = 0;}
+```
+
+
 
 ## Chap#001 Setting up the Windows build
 
@@ -1166,7 +1174,7 @@ Platform_Close_Window(platform_window* window){
 }
 ```
 
-#### Section#02 OUR IMPL: Call In & Pass Out
+#### Section#02 OUR IMPL: Call In & Call Out & Pass Out
 
 - Pass in what Game-Layer in need: Input...
 - Pass out what Platform-Layer in need: Backbuffer, Soundbuffer...
@@ -1262,7 +1270,7 @@ Problem: Game-Layer are trying to get memory from the platform layer.
 
 - We assume there's no failure at Game-Layer.
 
-Normal Approach
+**Normal Approach**
 
 ```c++
 struct Game_State {
@@ -1275,15 +1283,95 @@ internal void
 Game_Update(Game_State state/* other params */) {}
 ```
 
-Better Approach
+**Better Approach**
 
 ```c++
-struct Game_Memory {
-    
+struct Game_Memory
+{
+  // @note Required to be cleared as 0 at startup
+  uint64 permanent_storage_size;
+  void* permanent_storage;
+  uint64 transient_storage_size;
+  void* transient_storage;
+  bool is_initialized;
 };
 
 Game_Update(Game_Memory memory/* other params */) {}
 ```
+
+**Allocate Depend on Current Mode**
+
+```c++
+{
+	// Allocate game memory
+#if HANDMADE_INTERNAL
+  LPVOID base_addr = (LPVOID)tera_bytes((uint64)2);
+#else
+  LPVOID base_addr = 0;
+#endif
+  
+  Game_Memory game_memory = {};
+  game_memory.is_initialized = false;
+  game_memory.permanent_storage_size = mega_bytes(64); // @hack
+  game_memory.transient_storage_size = giga_bytes((uint64)4); // @hack
+  uint64 total_size =
+    game_memory.permanent_storage_size + game_memory.transient_storage_size;
+  game_memory.permanent_storage =
+    (uint64*)VirtualAlloc(0,
+                          total_size,
+                          MEM_COMMIT | MEM_RESERVE,
+                          PAGE_READWRITE);
+
+  game_memory.transient_storage =
+    (uint8*)game_memory.permanent_storage + game_memory.permanent_storage_size;
+  assert(game_memory.permanent_storage != NULL);
+  assert(game_memory.transient_storage != NULL);
+}
+```
+
+#### Section#05 File I/O
+
+Problems:
+
+- Read-File might fail
+- Threading safety. (Race Condition)
+- Void Steaming, we always no how much it is.
+
+Process
+
+- Get
+  - Create file handle
+  - Get file size
+  - Allocate result buffer on Platform-Layer
+  - Read file
+  - Close file handle
+
+`CreateFileEx` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+
+- Interesting Stuff: `CreateFile` function
+
+  ```c++
+  DWORD file_size_low, file_size_high;
+  file_size_low = GetFileSize(file_handler, &file_size_high);
+  ```
+
+`GetFileSize` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesize
+
+`ReadFile` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
+
+`WriteFile` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
+
+`CloseHandle` function
+
+- Syntax: https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
 
 
 

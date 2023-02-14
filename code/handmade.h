@@ -7,6 +7,7 @@
  - Controller/Keyboard Input
  - Bitmap Buffer
  - Sound Buffer
+ - File I/O
  
  @note
  HANDMADE_INTERNAL:
@@ -18,6 +19,7 @@
   1 - Slow code welcome
  */
 
+// ==== Type extends ==== 
 #define internal static
 #define global static
 #define local_persist static
@@ -25,6 +27,7 @@
 #define real32 float
 #define real64 float
 
+#define int8 INT8
 #define int16 INT16
 #define int64 INT64
 
@@ -33,22 +36,26 @@
 #define uint UINT32
 #define uint64 UINT64
 
-// Macros
+// ==== Consts ====
+
+// Float version of PI
+#define PI32 3.14159265359f
+
+// ==== Macros ==== 
 #define get_array_size(arr) (sizeof(arr) / sizeof(arr[0]))
 #define kilo_bytes(size) (size * 1024)
 #define mega_bytes(size) (kilo_bytes(size) * 1024)
 #define giga_bytes(size) (mega_bytes(size) * 1024)
 #define tera_bytes(size) (giga_bytes(size) * 1024)
 
+// ===== Assertion ==== 
 #if HANDMADE_SLOW
 #define assert(expr) if (!(expr)) {*(int*)0 = 0;}
 #else
 #define assert(expr)
 #endif
 
-// Float version of PI
-#define PI32 3.14159265359f
-
+// ==== Structs ==== 
 struct Game_Back_Buffer
 {
   void* bitmap;
@@ -119,19 +126,45 @@ struct Game_State
 
 struct Game_Memory
 {
+  // @note Required to be cleared as 0 at startup
   uint64 permanent_storage_size;
-  void* permanent_storage; // @note Required to be cleared as 0 at startup
-  bool is_initialized;
-
+  void* permanent_storage;
   uint64 transient_storage_size;
   void* transient_storage;
+  bool is_initialized;
 };
 
-static void
+// ==== Functions ====
+inline uint
+safe_truncate_uint64(uint64 value)
+{
+  assert(value <= 0xFFFFFFFF); // @todo max_val_of(pod)
+  return (uint)value;
+}
+
+internal void
 Game_Update(Game_Memory* memory,
             Game_Back_Buffer* back_buffer,
             Game_Sound_Buffer* sound_buffer,
             Game_Input* input);
+
+#if HANDMADE_INTERNAL
+/*
+  @note 
+  They are not for shipping...
+ */
+struct File_Result
+{
+  void* content;
+  uint content_size;
+};
+
+internal void Debug_Platform_Get(char* filename, File_Result* dest);
+
+internal void Debug_Platform_Free(void* memory);
+
+internal bool Debug_Platform_Put(char* filename, uint buffer_size, void* buffer);
+#endif
 
 #define HANDMADE_H
 #endif
