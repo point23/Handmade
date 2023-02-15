@@ -6,55 +6,56 @@ global Game_State* global_game_state;
 static void
 Render_Gradient(Game_Back_Buffer* buffer)
 {
-  uint8* row = (uint8*)(buffer->bitmap);
-  for (int y = 0; y < buffer->height; y++) {
-    uint* pixel = (uint*)row;
+    u8* row = (u8*)(buffer->bitmap);
+    for (s32 y = 0; y < buffer->height; y++) {
+        u32* pixel = (u32*)row;
 
-    for (int x = 0; x < buffer->width; x++) {
-      uint8 blue_channel = (uint8)(x + global_game_state->blue_offset);
-      uint8 green_channel = (uint8)(y + global_game_state->green_offset);
+        for (s32 x = 0; x < buffer->width; x++) {
+            u8 blue_channel = (u8)(x + global_game_state->blue_offset);
+            u8 green_channel = (u8)(y + global_game_state->green_offset);
 
-      // @note Little-endian RGB: GB|AR
-      *pixel++ = (green_channel << 8) | blue_channel;
+            // @note Little-endian RGB: GB|AR
+            *pixel++ = (green_channel << 8) | blue_channel;
+        }
+        row += buffer->pitch;
     }
-    row += buffer->pitch;
-  }
 }
 
 // @hack Play sin wave sounds
 internal void
 Output_Sound(Game_Sound_Buffer* buffer)
 {
-  local_persist real32 t;
-  const int16 tone_volume = 3000;
-  
-  int wave_period =
-    buffer->samples_per_second /
-    global_game_state->tone_hz; // @note Samples-per-circle = samples-per-second / frequency
-  int16* write_cursor = buffer->samples;
+    local_persist real32 t;
+    const s16 tone_volume = 3000;
 
-  for (int i = 0; i < buffer->sample_count; i++) {
-    float sine_val = sinf(t);
-    int16 sample_val = (int16)(tone_volume * sine_val);
-    *write_cursor++ = sample_val; // Left
-    *write_cursor++ = sample_val; // Right
+    s32 wave_period =
+      buffer->samples_per_second /
+      global_game_state
+        ->tone_hz; // @note Samples-per-circle = samples-per-second / frequency
+    s16* write_cursor = buffer->samples;
 
-    t += 2.0f * PI32 * (1.0f / (real32)wave_period);
-  }
+    for (s32 i = 0; i < buffer->sample_count; i++) {
+        float sine_val = sinf(t);
+        s16 sample_val = (s16)(tone_volume * sine_val);
+        *write_cursor++ = sample_val; // Left
+        *write_cursor++ = sample_val; // Right
+
+        t += 2.0f * PI32 * (1.0f / (real32)wave_period);
+    }
 }
 
 // @hack
 internal void
 Handle_Controller_Input(Game_Controller_Input* input)
 {
-  if (input->is_analog) {
-    global_game_state->tone_hz = 256 + (int)(128.0f * input->end_y);
-    global_game_state->blue_offset += (int)4.0f * input->end_x;
-  }
+    if (input->is_analog) {
+        global_game_state->tone_hz = 256 + (s32)(128.0f * input->end_y);
+        global_game_state->blue_offset += (s32)(4.0f * input->end_x);
+    }
 
-  if (input->down.ended_down) {
-    global_game_state->green_offset += 1;
-  }
+    if (input->down.ended_down) {
+        global_game_state->green_offset += 1;
+    }
 }
 
 internal void
@@ -63,13 +64,13 @@ Game_Update(Game_Memory* memory,
             Game_Sound_Buffer* sound_buffer,
             Game_Input* input)
 {
-  global_game_state = (Game_State*)memory->permanent_storage;
-  if (!memory->is_initialized) {
-    global_game_state->tone_hz = 256;
-    memory->is_initialized = true;
-  }
+    global_game_state = (Game_State*)memory->permanent_storage;
+    if (!memory->is_initialized) {
+        global_game_state->tone_hz = 256;
+        memory->is_initialized = true;
+    }
 
-  Handle_Controller_Input(&input->controllers[0]);
-  Render_Gradient(back_buffer);
-  Output_Sound(sound_buffer);
+    Handle_Controller_Input(&input->controllers[0]);
+    Render_Gradient(back_buffer);
+    Output_Sound(sound_buffer);
 }

@@ -18,7 +18,7 @@
   - ...
 */
 
-/* 
+/*
  @fixme: Only used in dev mode, we should implement it ourselves
    in the future, we may need to get rid of any RUNTIME libararies.
    And it's some platform dependent stuff, we need to be able to calcu
@@ -39,31 +39,31 @@ struct Win32_Back_Buffer
 {
   BITMAPINFO bmi;
   void* bitmap;
-  int width;
-  int height;
-  int bytes_per_pixel;
-  int pitch;
+  s32 width;
+  s32 height;
+  s32 bytes_per_pixel;
+  s32 pitch;
 };
 
 struct Win32_Window_Dimension
 {
-  int width;
-  int height;
+  s32 width;
+  s32 height;
 };
 
 struct Win32_Sound_Output
 {
-  const int samples_per_second = 48000;
-  const int bytes_per_sample = sizeof(INT16) * 2;
+  const s32 samples_per_second = 48000;
+  const s32 bytes_per_sample = sizeof(s16) * 2;
   /**
    * @note Bytes in sound buffer be like:
    * [ B B   B B    B B   B B  ]
    * [[Left Right] [Left Right]]
    */
-  const int secondary_buffer_size = samples_per_second * bytes_per_sample;
-  const int latency_sample_count = samples_per_second / 20;
+  const s32 secondary_buffer_size = samples_per_second * bytes_per_sample;
+  const s32 latency_sample_count = samples_per_second / 20;
 
-  uint running_Sample_idx = 0;
+  u32 running_Sample_idx = 0;
 };
 
 /* @fixme It's not suppose to have static global variables. */
@@ -78,7 +78,7 @@ global Win32_Back_Buffer Global_Back_Buffer;
 global Direct_Sound_Buffer Global_Secondary_Sound_Buffer;
 
 // CPU counts per second
-global int64 Global_Perf_Frequency;
+global s64 Global_Perf_Frequency;
 
 // @hack Debug log for now...
 internal void
@@ -93,31 +93,35 @@ Win32_Debug_Log(LPCSTR info)
 internal void
 Debug_Platform_Get(char* filename, File_Result* dest)
 {
-  void* result;
-  HANDLE file_handle = CreateFileA (filename,
-				     GENERIC_READ,    // Access mode
-				     FILE_SHARE_READ, // Share mode
-				     NULL,
-				     OPEN_EXISTING,   // Creation&Disposition
-				     0,
-				     NULL
-				     );
-  
+  void* result = 0;
+  HANDLE file_handle = CreateFileA(filename,
+                                   GENERIC_READ,    // Access mode
+                                   FILE_SHARE_READ, // Share mode
+                                   NULL,
+                                   OPEN_EXISTING, // Creation&Disposition
+                                   0,
+                                   NULL);
+
   if (file_handle != INVALID_HANDLE_VALUE) {
     LARGE_INTEGER file_size64;
     if (GetFileSizeEx(file_handle, &file_size64)) {
-      result = VirtualAlloc(0, file_size64.QuadPart, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+      result = VirtualAlloc(
+        0, file_size64.QuadPart, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
       assert(dest);
 
-      uint file_size32 = safe_truncate_uint64(file_size64.QuadPart);
-      DWORD bytes_read;
-      if (ReadFile(file_handle, result, file_size32, &bytes_read, 0)
-	  && file_size32 == bytes_read) {
+      u32 file_size32 = safe_truncate_u64(file_size64.QuadPart);
+      u32 bytes_read;
+      if (ReadFile(file_handle,
+                   result,
+                   cast_to_dword(file_size32),
+                   &cast_to_dword(bytes_read),
+                   0) &&
+          file_size32 == bytes_read) {
         dest->content_size = bytes_read;
-      	// Logging succeed
+        // Logging succeed
       } else {
-	Debug_Platform_Free(result);
-	result = 0;
+        Debug_Platform_Free(result);
+        result = 0;
       }
     }
     CloseHandle(file_handle);
@@ -129,26 +133,30 @@ Debug_Platform_Get(char* filename, File_Result* dest)
 internal void
 Debug_Platform_Free(void* memory)
 {
-  if (memory == NULL) return;
+  if (memory == NULL)
+    return;
   VirtualFree(memory, 0, MEM_RELEASE);
 }
 
 internal bool
-Debug_Platform_Put(char* filename, uint buffer_size, void* buffer)
+Debug_Platform_Put(char* filename, u32 buffer_size, void* buffer)
 {
   bool result = false;
-  HANDLE file_handle = CreateFileA (filename,
-				     GENERIC_WRITE,    // Access mode
-				     0,                // Share mode
-				     NULL,
-				     CREATE_ALWAYS,    // Creation&Disposition
-				     0,
-				     NULL
-				     );
-  
+  HANDLE file_handle = CreateFileA(filename,
+                                   GENERIC_WRITE, // Access mode
+                                   0,             // Share mode
+                                   NULL,
+                                   CREATE_ALWAYS, // Creation&Disposition
+                                   0,
+                                   NULL);
+
   if (file_handle != INVALID_HANDLE_VALUE) {
-    DWORD bytes_written;
-    if (WriteFile(file_handle, buffer, buffer_size, &bytes_written, 0)) {
+    u32 bytes_written;
+    if (WriteFile(file_handle,
+                  buffer,
+                  cast_to_dword(buffer_size),
+                  &cast_to_dword(bytes_written),
+                  0)) {
       result = buffer_size == bytes_written;
     } else {
       // Logging
@@ -160,29 +168,29 @@ Debug_Platform_Put(char* filename, uint buffer_size, void* buffer)
 
   return result;
 }
-	  
+
 // @note Controller Stuff
 // XInput Get State
-#define X_INPUT_GET_STATE(name) \
+#define X_INPUT_GET_STATE(name)                                                \
   DWORD WINAPI name(DWORD userIdx, XINPUT_STATE* state)
 typedef X_INPUT_GET_STATE(x_input_get_state);
-X_INPUT_GET_STATE(XInput_Get_State_Stub)
-{
-  return ERROR_DEVICE_NOT_CONNECTED;
-} 
-internal x_input_get_state* XInput_Get_State_ = XInput_Get_State_Stub;
-#define XInput_Get_State XInput_Get_State_
-
-// XInput Set State
-#define X_INPUT_SET_STATE(name)	\
-  DWORD WINAPI name(DWORD userIdx, XINPUT_VIBRATION* vibration)
-typedef X_INPUT_SET_STATE(x_input_set_state);
-X_INPUT_SET_STATE(XInput_Set_State_Stub)
+X_INPUT_GET_STATE(XInputGetStateStub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
-internal x_input_set_state* XInput_Set_State_ = XInput_Set_State_Stub;
-#define XInput_Set_State XInput_Set_State_
+internal x_input_get_state* XInputGetState_ = XInputGetStateStub;
+#define XInputGetState XInputGetState_
+
+// XInput Set State
+#define X_INPUT_SET_STATE(name)                                                \
+  DWORD WINAPI name(DWORD userIdx, XINPUT_VIBRATION* vibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub)
+{
+  return ERROR_DEVICE_NOT_CONNECTED;
+}
+internal x_input_set_state* XInputSetState_ = XInputSetStateStub;
+#define XInputSetState XInputSetState_
 
 // Load XInputGetState & XInputSetState
 internal void
@@ -195,16 +203,16 @@ Win32_Load_XInput(void)
 
   assert(xinput_lib != NULL);
 
-  XInput_Get_State =
+  XInputGetState =
     (x_input_get_state*)GetProcAddress(xinput_lib, "XInputGetState");
-  XInput_Set_State =
+  XInputSetState =
     (x_input_set_state*)GetProcAddress(xinput_lib, "XInputSetState");
 }
 
 // @note Audio Stuff
 // Dynamically load function: DirectSoundCreate
-#define DIRECT_SOUND_CREATE(name) \
-  HRESULT WINAPI name( \
+#define DIRECT_SOUND_CREATE(name)                                              \
+  HRESULT WINAPI name(                                                         \
     LPCGUID pcGuidDevice, LPDIRECTSOUND* ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 DIRECT_SOUND_CREATE(Direct_Sound_Create_Stub)
@@ -225,7 +233,7 @@ Win32_Load_DSound()
 }
 
 inline void
-Win32_Init_WaveFormat(WAVEFORMATEX* wave_format, INT32 samples_per_second)
+Win32_Init_WaveFormat(WAVEFORMATEX* wave_format, s32 samples_per_second)
 {
   wave_format->wFormatTag = WAVE_FORMAT_PCM;
   wave_format->nChannels = 2;
@@ -250,7 +258,7 @@ Win32_Create_Primary_Buffer(LPDIRECTSOUND dsound,
 inline HRESULT
 Win32_Create_Secondary_Buffer(LPDIRECTSOUND dsound,
                               WAVEFORMATEX wave_format,
-                              int buffer_size)
+                              s32 buffer_size)
 {
   DSBUFFERDESC buffer_description = {};
   buffer_description.dwSize = sizeof(buffer_description);
@@ -263,7 +271,7 @@ Win32_Create_Secondary_Buffer(LPDIRECTSOUND dsound,
 }
 
 internal void
-Win32_Init_DSound(HWND window, INT32 bufferSize, INT32 samplesPerSecond)
+Win32_Init_DSound(HWND window, s32 bufferSize, s32 samplesPerSecond)
 {
   Win32_Load_DSound();
   assert(Direct_Sound_Create != NULL);
@@ -295,28 +303,28 @@ Win32_Init_DSound(HWND window, INT32 bufferSize, INT32 samplesPerSecond)
 internal void
 Win32_Clear_Sound_Buffer(Win32_Sound_Output* sound_output)
 {
-  VOID* /*out*/ region1;
-  DWORD /*out*/ region1_size;
-  VOID* /*out*/ region2;
-  DWORD /*out*/ region2_size;
+  void* /*out*/ region1;
+  u32 /*out*/ region1_size;
+  void* /*out*/ region2;
+  u32 /*out*/ region2_size;
   bool buffer_locked = SUCCEEDED(
     Global_Secondary_Sound_Buffer->Lock(0,
                                         sound_output->secondary_buffer_size,
                                         &region1,
-                                        &region1_size,
+                                        &cast_to_dword(region1_size),
                                         &region2,
-                                        &region2_size,
+                                        &cast_to_dword(region2_size),
                                         0));
 
   assert(buffer_locked);
 
-  uint8* write_cursor = (uint8*)region1;
-  for (int i = 0; i < region1_size; i++) {
+  u8* write_cursor = (u8*)region1;
+  for (u32 i = 0; i < region1_size; i++) {
     *write_cursor++ = 0;
   }
 
-  write_cursor = (uint8*)region2;
-  for (int i = 0; i < region2_size; i++) {
+  write_cursor = (u8*)region2;
+  for (u32 i = 0; i < region2_size; i++) {
     *write_cursor++ = 0;
   }
 
@@ -328,21 +336,21 @@ Win32_Clear_Sound_Buffer(Win32_Sound_Output* sound_output)
 
 internal void
 Win32_Try_Fill_Sound_Buffer(Win32_Sound_Output* sound_output,
-                            DWORD offset,
-                            DWORD bytes_to_write,
+                            u32 offset,
+                            u32 bytes_to_write,
                             Game_Sound_Buffer* source_buffer)
 {
-  VOID* /*out*/ region1;
-  DWORD /*out*/ region1_size;
-  VOID* /*out*/ region2;
-  DWORD /*out*/ region2_size;
+  void* /*out*/ region1;
+  u32 /*out*/ region1_size;
+  void* /*out*/ region2;
+  u32 /*out*/ region2_size;
   bool buffer_locked =
     SUCCEEDED(Global_Secondary_Sound_Buffer->Lock(offset,
                                                   bytes_to_write,
                                                   &region1,
-                                                  &region1_size,
+                                                  &cast_to_dword(region1_size),
                                                   &region2,
-                                                  &region2_size,
+                                                  &cast_to_dword(region2_size),
                                                   0));
 
   // assert(buffer_locked);
@@ -351,20 +359,20 @@ Win32_Try_Fill_Sound_Buffer(Win32_Sound_Output* sound_output,
   }
 
   // Write region1
-  DWORD region1SampleCount = region1_size / sound_output->bytes_per_sample;
-  int16* dest_sample = (int16*)region1;
-  int16* source_sample = source_buffer->samples;
+  u32 region1_sample_count = region1_size / sound_output->bytes_per_sample;
+  s16* dest_sample = (s16*)region1;
+  s16* source_sample = source_buffer->samples;
 
-  for (int i = 0; i < region1SampleCount; i++) {
+  for (u32 i = 0; i < region1_sample_count; i++) {
     *dest_sample++ = *source_sample++; // Left
     *dest_sample++ = *source_sample++; // Right
     sound_output->running_Sample_idx += 1;
   }
 
   // Write region2
-  DWORD region2SampleCount = region2_size / sound_output->bytes_per_sample;
-  dest_sample = (INT16*)region2;
-  for (int i = 0; i < region2SampleCount; i++) {
+  u32 region2_sample_count = region2_size / sound_output->bytes_per_sample;
+  dest_sample = (s16*)region2;
+  for (u32 i = 0; i < region2_sample_count; i++) {
     *dest_sample++ = *source_sample++; // Left
     *dest_sample++ = *source_sample++; // Right
     sound_output->running_Sample_idx += 1;
@@ -381,14 +389,14 @@ Win32_Get_Window_Diemnsion(HWND window)
   RECT clientRect;
   GetClientRect(window, &clientRect);
 
-  int width = clientRect.right - clientRect.left;
-  int height = clientRect.bottom - clientRect.top;
+  s32 width = clientRect.right - clientRect.left;
+  s32 height = clientRect.bottom - clientRect.top;
 
   return { width, height };
 }
 
 internal void
-Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, int width, int height)
+Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, s32 width, s32 height)
 {
   // @todo Add some Virtual Protect stuff in the future, we may want older
   // buffers for some reason.
@@ -409,10 +417,10 @@ Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, int width, int height)
   bmiHeader.biHeight = -buffer->height;
   // This value must be set to 1.
   bmiHeader.biPlanes = 1;
-  bmiHeader.biBitCount = buffer->bytes_per_pixel * 8;
+  bmiHeader.biBitCount = (u16)(buffer->bytes_per_pixel * 8);
   bmiHeader.biCompression = BI_RGB;
 
-  int memorySize = buffer->width * buffer->height * buffer->bytes_per_pixel;
+  u64 memorySize = buffer->width * buffer->height * buffer->bytes_per_pixel;
   buffer->bitmap =
     VirtualAlloc(0, memorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
   buffer->pitch = buffer->width * buffer->bytes_per_pixel;
@@ -421,8 +429,8 @@ Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, int width, int height)
 internal void
 Win32_Copy_Buffer_To_Window(HDC deviceContext,
                             Win32_Back_Buffer* buffer,
-                            int window_width,
-                            int window_height)
+                            s32 window_width,
+                            s32 window_height)
 {
   // @todo Aspect ratio correction
   StretchDIBits(deviceContext,
@@ -447,8 +455,8 @@ Win32_Copy_Buffer_To_Window(HDC deviceContext,
 internal void
 Win32_Process_XInput_Digital_Button(Game_Button_State* s_old,
                                     Game_Button_State* s_new,
-                                    DWORD button_state,
-                                    DWORD btn_bit)
+                                    u32 button_state,
+                                    u32 btn_bit)
 {
   s_new->ended_down = button_state & btn_bit;
   s_new->half_transition_count =
@@ -485,7 +493,6 @@ Win32_Main_Window_Callback(HWND window,
 
     case WM_PAINT: {
       PAINTSTRUCT paint;
-      RECT clientRect;
       HDC deviceContext = BeginPaint(window, &paint);
 
       // Display buffer to window
@@ -500,33 +507,33 @@ Win32_Main_Window_Callback(HWND window,
     case WM_SYSKEYUP:
     case WM_KEYDOWN:
     case WM_KEYUP: {
-      UINT32 vkcode = w_param;
-      bool wasDown = l_param & (1 << 30) != 0;
-      bool isDown = l_param & (1 << 31) == 0;
+      u32 vkcode = (u32)w_param;
+      // bool was_down = (l_param & (1 << 30)) != 0;
+      // bool is_down = (l_param & (1 << 31)) == 0;
 
       if (vkcode == 'W') {
-        OutputDebugStringA("W\n");
+
       } else if (vkcode == 'A') {
-        OutputDebugStringA("A\n");
+
       } else if (vkcode == 'S') {
-        OutputDebugStringA("S\n");
+
       } else if (vkcode == 'D') {
-        OutputDebugStringA("D\n");
+
       } else if (vkcode == VK_UP) {
-        OutputDebugStringA("VK_UP\n");
+
       } else if (vkcode == VK_DOWN) {
-        OutputDebugStringA("VK_DOWN\n");
+
       } else if (vkcode == VK_LEFT) {
-        OutputDebugStringA("VK_LEFT\n");
+       
       } else if (vkcode == VK_RIGHT) {
-        OutputDebugStringA("VK_RIGHT\n");
+
       } else if (vkcode == VK_ESCAPE) {
-        OutputDebugStringA("VK_ESCAPE\n");
+
       } else if (vkcode == VK_SPACE) {
-        OutputDebugStringA("VK_SPACE\n");
+
       }
 
-      // @fixme There might be a waste of time trans int32 to bool
+      // @fixme There might be a waste of time trans s32 to bool
       bool altDown = l_param & (1 << 29);
       if (vkcode == VK_F4 && altDown) {
         Global_Running = false;
@@ -541,11 +548,11 @@ Win32_Main_Window_Callback(HWND window,
   return result;
 }
 
-int CALLBACK
+s32 CALLBACK
 WinMain(HINSTANCE instance,
         HINSTANCE prev_instance,
         LPSTR cmd_line,
-        int show_cmd)
+        s32 show_cmd)
 {
   // Dynamically load functions
   Win32_Load_XInput();
@@ -593,17 +600,16 @@ WinMain(HINSTANCE instance,
                     sound_output.samples_per_second);
   Win32_Clear_Sound_Buffer(&sound_output);
   Global_Secondary_Sound_Buffer->Play(0, 0, DSBPLAY_LOOPING);
-  int16* sound_samples =
-    (int16*)VirtualAlloc(0,
-                         sound_output.secondary_buffer_size,
-                         MEM_COMMIT | MEM_RESERVE,
-                         PAGE_READWRITE);
+  s16* sound_samples = (s16*)VirtualAlloc(0,
+                                          sound_output.secondary_buffer_size,
+                                          MEM_COMMIT | MEM_RESERVE,
+                                          PAGE_READWRITE);
   assert(sound_samples);
 
   // Debug stuff, query last clock-cycle count;
   LARGE_INTEGER last_counter;
   QueryPerformanceCounter(&last_counter);
-  UINT64 last_cycle_count = __rdtsc();
+  u64 last_cycle_count = __rdtsc();
 
   // Init game input
   Game_Input inputs[2] = {};
@@ -612,39 +618,34 @@ WinMain(HINSTANCE instance,
 
   // Allocate game memory
 #if HANDMADE_INTERNAL
-  LPVOID base_addr = (LPVOID)tera_bytes((uint64)2);
+  LPVOID base_addr = (LPVOID)tera_bytes((u64)2);
 #else
   LPVOID base_addr = 0;
 #endif
-  
+
   Game_Memory game_memory = {};
   game_memory.is_initialized = false;
-  game_memory.permanent_storage_size = mega_bytes(64); // @hack
-  game_memory.transient_storage_size = giga_bytes((uint64)4); // @hack
-  uint64 total_size =
+  game_memory.permanent_storage_size = mega_bytes(64);     // @hack
+  game_memory.transient_storage_size = giga_bytes((u64)1); // @hack
+  u64 total_size =
     game_memory.permanent_storage_size + game_memory.transient_storage_size;
   game_memory.permanent_storage =
-    (uint64*)VirtualAlloc(0,
-                          total_size,
-                          MEM_COMMIT | MEM_RESERVE,
-                          PAGE_READWRITE);
+    (u64*)VirtualAlloc(0, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
   game_memory.transient_storage =
-    (uint8*)game_memory.permanent_storage + game_memory.permanent_storage_size;
+    (u8*)game_memory.permanent_storage + game_memory.permanent_storage_size;
   assert(game_memory.permanent_storage != NULL);
   assert(game_memory.transient_storage != NULL);
 
   char* filename = __FILE__; // @hack
-  File_Result result = {};
-  Debug_Platform_Get(filename, &result);
-  if (result.content_size == 0) {
+  File_Result hack_result = {};
+  Debug_Platform_Get(filename, &hack_result);
+  if (hack_result.content_size == 0) {
     // @todo Logging
   }
   // @hack
-  Debug_Platform_Put("test.cpp",
-		       result.content_size,
-		       result.content);
-  
+  Debug_Platform_Put("test.cpp", hack_result.content_size, hack_result.content);
+
   // Win32 main loop
   while (Global_Running) {
     MSG message = {};
@@ -660,20 +661,19 @@ WinMain(HINSTANCE instance,
 
     { // Handle controller input
 
-      int max_controller_count = XUSER_MAX_COUNT;
+      s32 max_controller_count = XUSER_MAX_COUNT;
       if (max_controller_count > get_array_size(new_input->controllers)) {
         max_controller_count = get_array_size(new_input->controllers);
       }
 
       // @todo Should we ask for user input more frequently?
-      for (int it_idx = 0; it_idx < max_controller_count; it_idx++) {
+      for (s32 it_idx = 0; it_idx < max_controller_count; it_idx++) {
         Game_Controller_Input* old_controller = &old_input->controllers[it_idx];
         Game_Controller_Input* new_controller = &new_input->controllers[it_idx];
 
         XINPUT_STATE controller_state;
-        DWORD result = XInput_Get_State(it_idx, &controller_state);
-        if (result != ERROR_SUCCESS)
-          continue;
+        u32 result = XInputGetState(it_idx, &controller_state);
+        if (result != ERROR_SUCCESS) continue;
 
         // Controller is connected
         XINPUT_GAMEPAD* gamepad = &controller_state.Gamepad;
@@ -736,8 +736,8 @@ WinMain(HINSTANCE instance,
         new_controller->is_analog = true;
 
         // // Right thumbstick
-        // uint16 thumb_right_x = gamepad->sThumbRX;
-        // uint16 thumb_right_y = gamepad->sThumbRY;
+        // u16 thumb_right_x = gamepad->sThumbRX;
+        // u16 thumb_right_y = gamepad->sThumbRY;
       }
 
       // @todo Impl swap
@@ -746,19 +746,17 @@ WinMain(HINSTANCE instance,
       old_input = temp;
     }
 
-    DWORD offset;
-    DWORD target_cursor;
-    DWORD bytes_to_write =
-      0; // max  availables that we can write to the buffer.
+    u32 offset;
+    u32 target_cursor;
+    u32 bytes_to_write = 0; // max  availables that we can write to the buffer.
 
     { // Calcu bytes need to be write to sound buffer
-      DWORD play_cursor;
-      DWORD
-      write_cursor; // @Ignored: We are going to write the buffer on our own
+      u32 play_cursor;
+      u32 write_cursor; // @Ignored: We are going to write the buffer on our own
 
       bool buffer_cursor_getted =
         SUCCEEDED(Global_Secondary_Sound_Buffer->GetCurrentPosition(
-          &play_cursor, &write_cursor));
+          &cast_to_dword(play_cursor), &cast_to_dword(write_cursor)));
 
       assert(buffer_cursor_getted);
 
@@ -790,7 +788,7 @@ WinMain(HINSTANCE instance,
     sound_buffer.samples = sound_samples;
     sound_buffer.samples_per_second = sound_output.samples_per_second;
     sound_buffer.sample_count = bytes_to_write / sound_output.bytes_per_sample;
-    
+
     Game_Update(&game_memory, &back_buffer, &sound_buffer, new_input);
 
     { // Render to screen
@@ -810,9 +808,9 @@ WinMain(HINSTANCE instance,
       /* @note query performance data. */
       LARGE_INTEGER end_counter;
       QueryPerformanceCounter(&end_counter);
-      INT64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
-      UINT64 end_cycle_count = __rdtsc();
-      UINT64 cycles_elapsed = end_cycle_count - last_cycle_count;
+      s64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+      u64 end_cycle_count = __rdtsc();
+      u64 cycles_elapsed = end_cycle_count - last_cycle_count;
 
       // Milliseconds per frame
       float mspf =

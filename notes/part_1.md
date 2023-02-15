@@ -169,6 +169,36 @@ Result
 #define asser(expr) if (!(expr)) {*(int *) 0 = 0;}
 ```
 
+#### Section#05 Built-in Types
+
+**Data Type Ranges**
+
+https://learn.microsoft.com/en-us/cpp/cpp/data-type-ranges?view=msvc-170
+
+**Type synonyms**
+
+https://learn.microsoft.com/en-us/cpp/cpp/fundamental-types-cpp?view=msvc-170
+
+| Type             | Other                                                        |
+| ---------------- | ------------------------------------------------------------ |
+| signed __int8    | char                                                         |
+| unsigned __int8  | unsigned char, bool                                          |
+| signed __int16   | short, short int, signed short, singed short int             |
+| unsigned __int16 | unsigned short, unsigned short int                           |
+| signed __int32   | int, singed, singed int \| long, long int, singed long int   |
+| unsigned int32   | unsigned , unsigned int \| unsigned long, unsigned long int  |
+| unsigned __int64 | unsigned long long int, unsigned long long                   |
+| singed __int64   | long long, long long int, signed long long int, signed long long |
+
+**Size of built-in types** 
+
+| Size   | TYPE                                      |
+| ------ | ----------------------------------------- |
+| 1 Byte | bool, char, unsigned char, signed char    |
+| 2 Byte | char16_t, __int16, short, unsigned_short  |
+| 4 Byte | char32_t, float, int, long, unsigned long |
+| 8 Byte | double, __int64, long double, long long   |
+
 
 
 ## Chap#001 Setting up the Windows build
@@ -198,22 +228,46 @@ WinMain(HINSTANCE instance,
 
 #### Section#2 Build tool
 
-Compiler Command-Line
+**Compiler Command-Line**
 
-- Syntax: https://learn.microsoft.com/en-us/cpp/build/reference/compiler-command-line-syntax?view=msvc-170
+Syntax: https://learn.microsoft.com/en-us/cpp/build/reference/compiler-command-line-syntax?view=msvc-170
 
-- `cl` is not recognized: https://stackoverflow.com/questions/8800361/cl-is-not-recognized-as-an-internal-or-external-command
-- Options: https://www.geoffchappell.com/studies/msvc/cl/cl/options.htm
+`cl` is not recognized: https://stackoverflow.com/questions/8800361/cl-is-not-recognized-as-an-internal-or-external-command
 
-build.bat
+Options: https://www.geoffchappell.com/studies/msvc/cl/cl/options.htm
+
+- `/W`: Set warning level
+  - `/wd[number]`: Disable a warning
+  - `/WX`: Treat warning as errors
+- `/FC`: Use full pathnames in diagnostics
+- `/Zi`: Enable debugging information
+- `/Oi`: Enable intrinsic functions
+  - Intrinsic function: https://en.wikipedia.org/wiki/Intrinsic_function
+- `/GR`: Directs compiler to emit Run-Time Type info
+  - `/GR-`: Directs it not to.
+  - RTTI, Run-time type information:  allows the type of an object to be determined during program execution
+    - https://learn.microsoft.com/en-us/cpp/cpp/run-time-type-information?view=msvc-170
+- `/EHa`
+  - Catches both structured (asynchronous) and standard C++ (synchronous) exceptions
+  - Stack unwinding: https://stackoverflow.com/questions/2331316/what-is-stack-unwinding
+- `/MT`: Causes the application to use the multithread
+- `/Fm[dir]`:  Creates a mapfile
+  - Mapfile: 
+- `/link`: Passes the specified option to LINK
+  - `opt:ref`
+
+**build.bat**
 
 ```
 @echo off
-
 pushd build
 cl [Options] FileDir [libs]
 popd
 ```
+
+batch file: https://en.wikipedia.org/wiki/Batch_file
+
+>  It consists of a series of commands to be executed by the Command-Line-Interpreter stored in a plain-text file.
 
 #### Section#3 Debugger: Visual Studio
 
@@ -1331,6 +1385,26 @@ Game_Update(Game_Memory memory/* other params */) {}
 
 #### Section#05 File I/O
 
+```c++
+#if HANDMADE_INTERNAL
+/*
+  @note 
+  They are not for shipping...
+ */
+struct File_Result
+{
+  void* content;
+  uint content_size;
+};
+
+internal void Debug_Platform_Get(char* filename, File_Result* dest);
+
+internal void Debug_Platform_Free(void* memory);
+
+internal bool Debug_Platform_Put(char* filename, uint buffer_size, void* buffer);
+#endif
+```
+
 Problems:
 
 - Read-File might fail
@@ -1342,9 +1416,16 @@ Process
 - Get
   - Create file handle
   - Get file size
+    - Set content size
   - Allocate result buffer on Platform-Layer
   - Read file
+    - Set content pointer
   - Close file handle
+- Put
+  - Create file handle
+  - Write to File
+  - Close file handle
+
 
 `CreateFileEx` function
 
@@ -1374,4 +1455,6 @@ Process
 - Syntax: https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
 
 
+
+# Chap#007 
 
