@@ -91,6 +91,16 @@ Win32_Debug_Log(LPCSTR info)
 }
 
 // @note File I/O Stuff
+// Use case:
+//     char* filename = "";
+//     File_Result res = {};
+//     Debug_Platform_Get(filename, res);
+//     if (res.content_size != 0) {
+//         Debug_Platform_Put("test.cpp", res.content_size, res.content);
+//     } else {
+//         // Logging
+//     }
+//
 internal void
 Debug_Platform_Get(char* filename, File_Result* dest)
 {
@@ -460,19 +470,94 @@ Win32_Copy_Buffer_To_Window(HDC deviceContext,
 internal void
 Win32_Process_XInput_Digital_Button(Game_Button_State* s_old,
                                     Game_Button_State* s_new,
-                                    u32 button_state,
-                                    u32 btn_bit)
+                                    bool is_down)
 {
-    s_new->ended_down = button_state & btn_bit;
+    s_new->ended_down = is_down;
     s_new->half_transition_count =
-      (s_old->ended_down != s_new->ended_down) ? 1 : 0;
+      (s_old->ended_down != is_down) ? 1 : 0;
+}
+
+internal real32
+Win32_Process_XInput_Stick_Value(s32 dead_zone, real32 axis_value) {
+    const real32 abs_max_axis_val = 32768.0f;
+    const real32 abs_min_axis_val = 32767.0f;
+    
+    real32 result = 0;
+    if (axis_value < -dead_zone) {
+	result = axis_value / abs_max_axis_val;
+    } else if (axis_value > dead_zone) {
+	result = axis_value / abs_min_axis_val;
+    }
+    return result;
 }
 
 internal void
 Win32_Process_Keyboard_Message(Game_Button_State* state, bool is_down)
 {
+    assert(state->ended_down != is_down);
     state->ended_down = is_down;
-    state->half_transition_count += 1;
+    state->half_transition_count++;
+}
+
+/*
+ @note
+ - Functional func: take things in, and return new things back.
+ - Func with side effects: take things in, and modify it. 
+*/
+internal void
+Win32_Process_Pending_Messages(Game_Controller_Input* keyboard_controller) {
+    // @note Peek the newest message from queue without pending the
+    // application
+    MSG message;
+    while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+	if (message.message == WM_QUIT) Global_Running = false;
+	
+	switch (message.message) {
+	    case WM_SYSKEYDOWN:
+	    case WM_SYSKEYUP:
+	    case WM_KEYDOWN:
+	    case WM_KEYUP: {
+		u32 w_param = (u32)message.wParam;
+		u32 l_param = (u32)message.lParam;
+
+		u32& vk_code = w_param;
+		bool was_down = (l_param & (1 << 30)) != 0;
+		bool is_down = (l_param & (1 << 31)) == 0;
+
+		if (was_down == is_down) break; // @note only handle it when btn state changed
+
+		if (vk_code == 'W') {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->move_up, is_down);
+		} else if (vk_code == 'A') {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->move_left, is_down);
+		} else if (vk_code == 'S') {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->move_down, is_down);
+		} else if (vk_code == 'D') {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->move_right, is_down);
+		} else if (vk_code == VK_UP) {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->action_up, is_down);
+		} else if (vk_code == VK_DOWN) {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->action_down, is_down);
+		} else if (vk_code == VK_LEFT) {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->action_left, is_down);
+		} else if (vk_code == VK_RIGHT) {
+		    Win32_Process_Keyboard_Message(&keyboard_controller->action_right, is_down);
+		} else if (vk_code == VK_ESCAPE) {
+		} else if (vk_code == VK_SPACE) {
+		}
+		
+		// @fixme There might be a waste of time trans s32 to bool
+		bool alt_down = l_param & (1 << 29);
+		if (vk_code == VK_F4 && alt_down) {
+		    Global_Running = false;
+		}
+	    } break;
+	    default: {
+		TranslateMessage(&message);
+		DispatchMessage(&message);
+	    } break;
+	}
+    }    
 }
 
 // @note A callback function, which you define in your application, that
@@ -522,8 +607,8 @@ Win32_Main_Window_Callback(HWND window,
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP: {
-	    // @note We're suppose to handle key input inside the main loop
-	    assert(false);
+            // @note We're suppose to handle key input inside the main loop
+            assert(false);
         } break;
 
         default: {
@@ -581,11 +666,10 @@ WinMain(HINSTANCE instance,
 
     // Initialize secondary sound buffer
     Win32_Sound_Output sound_output;
-    Win32_Init_DSound(window,
-                      sound_output.secondary_buffer_size,
-                      sound_output.samples_per_second);
+    Win32_Init_DSound(window, sound_output.secondary_buffer_size, sound_output.samples_per_second);
     Win32_Clear_Sound_Buffer(&sound_output);
     Global_Secondary_Sound_Buffer->Play(0, 0, DSBPLAY_LOOPING);
+    
     s16* sound_samples = (s16*)VirtualAlloc(0,
                                             sound_output.secondary_buffer_size,
                                             MEM_COMMIT | MEM_RESERVE,
@@ -611,161 +695,127 @@ WinMain(HINSTANCE instance,
 
     Game_Memory game_memory = {};
     game_memory.is_initialized = false;
-    game_memory.permanent_storage_size = mega_bytes(64);     // @hack
-    game_memory.transient_storage_size = giga_bytes((u64)1); // @hack
-    u64 total_size =
-      game_memory.permanent_storage_size + game_memory.transient_storage_size;
-    game_memory.permanent_storage = (u64*)VirtualAlloc(
-      0, (u32)total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    game_memory.permanent_storage_size = mega_bytes(64); // @todo Config this value
+    game_memory.transient_storage_size = giga_bytes((u64)1); // @todo Config this value
+    u64 total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
+    game_memory.permanent_storage = (u64*)VirtualAlloc(0,
+						       (u32)total_size,
+						       MEM_COMMIT | MEM_RESERVE,
+						       PAGE_READWRITE);
 
-    game_memory.transient_storage =
-      (u8*)game_memory.permanent_storage + game_memory.permanent_storage_size;
+    game_memory.transient_storage = (u8*)game_memory.permanent_storage + game_memory.permanent_storage_size;
     assert(game_memory.permanent_storage != NULL);
     assert(game_memory.transient_storage != NULL);
-
-    char* filename = __FILE__; // @hack
-    File_Result hack_result = {};
-    Debug_Platform_Get(filename, &hack_result);
-    if (hack_result.content_size == 0) {
-        // @todo Logging
-    }
-    // @hack
-    Debug_Platform_Put(
-      "test.cpp", hack_result.content_size, hack_result.content);
-
+    
     // Win32 main loop
     while (Global_Running) {
-        MSG message = {};
+        Game_Controller_Input* keyboard_old = &old_input->controllers[0];
+        Game_Controller_Input* keyboard_new = &new_input->controllers[0];
+        Game_Controller_Input empty_controller = {};
+        *keyboard_new = empty_controller;
+	for (u32 idx = 0; idx < get_array_size(keyboard_old->buttons); idx++) {
+	    keyboard_new->buttons[idx].ended_down = keyboard_old->buttons[idx].ended_down;
+	}
 
-	Game_Controller_Input* keyboard_controller = &new_input->controllers[0];
-	Game_Controller_Input empty_controller = {};
-	*keyboard_controller = empty_controller;
+	Win32_Process_Pending_Messages(keyboard_new);
 	
-        // @note Peek the newest message from queue without pending the
-        // application
-        while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-            if (message.message == WM_QUIT) Global_Running = false;
-
-            TranslateMessage(&message);
-            DispatchMessage(&message);
-            switch (message.message) {
-                case WM_SYSKEYDOWN:
-                case WM_SYSKEYUP:
-                case WM_KEYDOWN:
-                case WM_KEYUP: {
-                    u32 vk_code = (u32)w_param;
-                    bool was_down = (l_param & (1 << 30)) != 0;
-                    bool is_down = (l_param & (1 << 31)) == 0;
-                    if (vk_code == 'W') {
-                    } else if (vk_code == 'A') {
-                    } else if (vk_code == 'S') {
-                    } else if (vk_code == 'D') {
-                    } else if (vk_code == VK_UP) {
-			Win32_Process_Keyboard_Message(&keyboard_controller->up, is_down);
-                    } else if (vk_code == VK_DOWN) {
-		        Win32_Process_Keyboard_Message(&keyboard_controller->down, is_down);
-                    } else if (vk_code == VK_LEFT) {
-		        Win32_Process_Keyboard_Message(&keyboard_controller->left, is_down); 
-                    } else if (vk_code == VK_RIGHT) {
-		        Win32_Process_Keyboard_Message(&keyboard_controller->right, is_down);  
-                    } else if (vk_code == VK_ESCAPE) {
-                    } else if (vk_code == VK_SPACE) {			
-                    }
-		    
-                    // @fixme There might be a waste of time trans s32 to bool
-                    bool altDown = l_param & (1 << 29);
-                    if (vk_code == VK_F4 && altDown) {
-			Global_Running = false;
-                    }
-                } break;
-            }
-        }
-
         { // Handle controller input
-
-            s32 max_controller_count = XUSER_MAX_COUNT;
-            if (max_controller_count > get_array_size(new_input->controllers)) {
-                max_controller_count = get_array_size(new_input->controllers);
-            }
+            u32 max_controller_count = XUSER_MAX_COUNT + 1;
+            assert (max_controller_count <= get_array_size(new_input->controllers));
 
             // @todo Should we ask for user input more frequently?
-            for (s32 it_idx = 0; it_idx < max_controller_count; it_idx++) {
-                Game_Controller_Input* old_controller =
-                  &old_input->controllers[it_idx];
-                Game_Controller_Input* new_controller =
-                  &new_input->controllers[it_idx];
+            for (u32 it_idx = 1; it_idx <= max_controller_count; it_idx++) {
+                Game_Controller_Input* old_controller = &old_input->controllers[it_idx];
+                Game_Controller_Input* new_controller = &new_input->controllers[it_idx];
 
                 XINPUT_STATE controller_state;
-                u32 result = XInputGetState(it_idx, &controller_state);
-                if (result != ERROR_SUCCESS)
-                    continue;
+                u32 result = XInputGetState(it_idx - 1, &controller_state);
+                if (result != ERROR_SUCCESS) {
+		    new_controller->is_connected = false;
+		    continue;
+		}
 
+		new_controller->is_connected = true;
+		const real32 stick_move_threshold = 0.5;
+		
                 // Controller is connected
                 XINPUT_GAMEPAD* gamepad = &controller_state.Gamepad;
 
-                // D-pad
-                bool dpad_up = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-                bool dpad_down = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-                bool dpad_left = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-                bool dpad_right = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+		{ // @note Detect dead zone for analog: stick/triger
+		    // Left thumbstick
+		    real32 x = Win32_Process_XInput_Stick_Value(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, gamepad->sThumbLX);
+		    real32 y = Win32_Process_XInput_Stick_Value(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, gamepad->sThumbLY);
 
-                // Buttons
-                Win32_Process_XInput_Digital_Button(&old_controller->down,
-                                                    &new_controller->down,
-                                                    gamepad->wButtons,
-                                                    XINPUT_GAMEPAD_A);
-                Win32_Process_XInput_Digital_Button(&old_controller->up,
-                                                    &new_controller->up,
-                                                    gamepad->wButtons,
-                                                    XINPUT_GAMEPAD_B);
-                Win32_Process_XInput_Digital_Button(&old_controller->left,
-                                                    &new_controller->left,
-                                                    gamepad->wButtons,
-                                                    XINPUT_GAMEPAD_X);
-                Win32_Process_XInput_Digital_Button(&old_controller->right,
-                                                    &new_controller->right,
-                                                    gamepad->wButtons,
-                                                    XINPUT_GAMEPAD_Y);
-                // bool btn_start = gamepad->wButtons & XINPUT_GAMEPAD_START;
-                // bool btn_back = gamepad->wButtons & XINPUT_GAMEPAD_BACK;
+		    new_controller->stick_average_x = x;
+		    new_controller->stick_average_y = y;
+		    new_controller->is_analog = true;
+		    
+		    // // Right thumbstick
+		    // gamepad->sThumbRX;
+		    // gamepad->sThumbRY;
+		}
+		
+		{ // D-pad
+		    bool dpad_up = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+		    bool dpad_down = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+		    bool dpad_left = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+		    bool dpad_right = gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
 
-                // Shoulders
-                Win32_Process_XInput_Digital_Button(
-                  &old_controller->left_shoulder,
-                  &new_controller->left_shoulder,
-                  gamepad->wButtons,
-                  XINPUT_GAMEPAD_LEFT_SHOULDER);
-                Win32_Process_XInput_Digital_Button(
-                  &old_controller->right_shoulder,
-                  &new_controller->right_shoulder,
-                  gamepad->wButtons,
-                  XINPUT_GAMEPAD_RIGHT_SHOULDER);
+		    if (dpad_up) new_controller->stick_average_y = 1.0f;
+		    if (dpad_down) new_controller->stick_average_y = -1.0f;
+		    if (dpad_left) new_controller->stick_average_x = -1.0f;
+		    if (dpad_right) new_controller->stick_average_x = 1.0f;
+		}
+		
+		{ // Fake buttons
+		    real32& x = new_controller->stick_average_x;
+		    real32& y = new_controller->stick_average_y;
+		    
+		    Win32_Process_XInput_Digital_Button(&old_controller->move_down,
+							&new_controller->move_down,
+							(y < -stick_move_threshold) ? 1 : 0);
+		    Win32_Process_XInput_Digital_Button(&old_controller->move_up,
+							&new_controller->move_up,
+							(y > stick_move_threshold) ? 1 : 0);
+		    Win32_Process_XInput_Digital_Button(&old_controller->move_left,
+							&new_controller->move_left,
+							(x > stick_move_threshold) ? 1 : 0);
+		    Win32_Process_XInput_Digital_Button(&old_controller->move_right,
+							&new_controller->move_right,
+							(x < -stick_move_threshold) ? 1 : 0);
+		}
+		
+                { // Buttons
+		    Win32_Process_XInput_Digital_Button(&old_controller->action_down,
+							&new_controller->action_down,
+							gamepad->wButtons & XINPUT_GAMEPAD_A);
+		    Win32_Process_XInput_Digital_Button(&old_controller->action_up,
+							&new_controller->action_up,
+							gamepad->wButtons & XINPUT_GAMEPAD_B);
+		    Win32_Process_XInput_Digital_Button(&old_controller->action_left,
+							&new_controller->action_left,
+							gamepad->wButtons & XINPUT_GAMEPAD_X);
+		    Win32_Process_XInput_Digital_Button(&old_controller->action_right,
+							&new_controller->action_right,
+							gamepad->wButtons & XINPUT_GAMEPAD_Y);
+		    Win32_Process_XInput_Digital_Button(&old_controller->end,
+							&new_controller->end,
+							gamepad->wButtons & XINPUT_GAMEPAD_BACK);
+		    Win32_Process_XInput_Digital_Button(&old_controller->start,
+							&new_controller->start,
+							gamepad->wButtons & XINPUT_GAMEPAD_START);
+		}
 
-                // Left thumbstick
-                // @hack Only for debuging.
-                // @todo Deadzone detection.
-                real32 x;
-                if (gamepad->sThumbLX < 0) {
-                    x = (real32)gamepad->sThumbLX / 32768.0f;
-                } else {
-                    x = (real32)gamepad->sThumbLX / 32767.0f;
-                }
-                new_controller->max_x = new_controller->min_x =
-                  new_controller->end_x = x;
-                real32 y;
-                if (gamepad->sThumbLX < 0) {
-                    y = (real32)gamepad->sThumbLX / 32768.0f;
-                } else {
-                    y = (real32)gamepad->sThumbLX / 32767.0f;
-                }
-                new_controller->max_y = new_controller->min_y =
-                  new_controller->end_y = y;
-                new_controller->is_analog = true;
-
-                // // Right thumbstick
-                // u16 thumb_right_x = gamepad->sThumbRX;
-                // u16 thumb_right_y = gamepad->sThumbRY;
-            }
+                { // Shoulders
+		    Win32_Process_XInput_Digital_Button(&old_controller->left_shoulder,
+							&new_controller->left_shoulder,
+							gamepad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+		
+		    Win32_Process_XInput_Digital_Button(&old_controller->right_shoulder,
+							&new_controller->right_shoulder,
+							gamepad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+		}
+	    }
 
             // @todo Impl swap
             Game_Input* temp = new_input;
@@ -794,7 +844,7 @@ WinMain(HINSTANCE instance,
                      sound_output.secondary_buffer_size;
 
             target_cursor = (play_cursor + (sound_output.latency_sample_count *
-                                            sound_output.bytes_per_sample)) %
+					    sound_output.bytes_per_sample)) %
                             sound_output.secondary_buffer_size;
 
             if (offset > target_cursor) {
@@ -844,8 +894,7 @@ WinMain(HINSTANCE instance,
             u64 cycles_elapsed = end_cycle_count - last_cycle_count;
 
             // Milliseconds per frame
-            float mspf =
-              (1000.0f * (float)counter_elapsed) / (float)Global_Perf_Frequency;
+            float mspf = (1000.0f * (float)counter_elapsed) / (float)Global_Perf_Frequency;
             // Frames per second
             float fps = (float)Global_Perf_Frequency / (float)counter_elapsed;
             // Mega-Cycles per frame

@@ -199,6 +199,10 @@ https://learn.microsoft.com/en-us/cpp/cpp/fundamental-types-cpp?view=msvc-170
 | 4 Byte | char32_t, float, int, long, unsigned long |
 | 8 Byte | double, __int64, long double, long long   |
 
+#### Section#06 Controller Dead Zone
+
+- https://learn.microsoft.com/en-us/windows/win32/xinput/getting-started-with-xinput#dead-zone
+
 
 
 ## Chap#001 Setting up the Windows build
@@ -785,7 +789,7 @@ Win32_Copy_Buffer_To_Window(HDC deviceContext,
 
 ​	Using this API, any connected Xbox Controller can be queried for its state, and vibration effects can be set. Applications should support multiple controllers, which are indicated by ID(range of 0-3).
 
-References:
+**References:**
 
 - Programming Guide: https://learn.microsoft.com/en-us/windows/win32/xinput/programming-guide
 - Functions: https://learn.microsoft.com/en-us/windows/win32/xinput/functions

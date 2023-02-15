@@ -86,36 +86,39 @@ struct Game_Button_State
 struct Game_Controller_Input
 {
     bool is_analog;
+    bool is_connected;
     // @note Controller hardware is sampling...
-    real32 start_x;
-    real32 start_y;
-    real32 end_x;
-    real32 end_y;
-
-    real32 min_x;
-    real32 min_y;
-    real32 max_x;
-    real32 max_y;
+    real32 stick_average_x;
+    real32 stick_average_y;
 
     union
     {
-        Game_Button_State buttons[6];
+        Game_Button_State buttons[12];
 
         struct
         {
-            Game_Button_State up;
-            Game_Button_State down;
-            Game_Button_State left;
-            Game_Button_State right;
+            Game_Button_State move_up;
+            Game_Button_State move_down;
+            Game_Button_State move_left;
+            Game_Button_State move_right;
+            Game_Button_State action_up;
+            Game_Button_State action_down;
+            Game_Button_State action_left;
+            Game_Button_State action_right;
             Game_Button_State left_shoulder;
             Game_Button_State right_shoulder;
+	    Game_Button_State start;
+	    Game_Button_State end;
         };
     };
 };
 
 struct Game_Input
 {
-    Game_Controller_Input controllers[4];
+    // @note
+    // 0    - keyboard
+    // 1..4 - controller
+    Game_Controller_Input controllers[5];
 };
 
 struct Game_Clocks

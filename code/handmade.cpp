@@ -49,12 +49,21 @@ internal void
 Handle_Controller_Input(Game_Controller_Input* input)
 {
     if (input->is_analog) {
-        global_game_state->tone_hz = 256 + (s32)(128.0f * input->end_y);
-        global_game_state->blue_offset += (s32)(4.0f * input->end_x);
+        global_game_state->tone_hz = 256 + (s32)(128.0f * input->stick_average_x);
+        global_game_state->blue_offset += (s32)(4.0f * input->stick_average_x);
     }
-
-    if (input->down.ended_down) {
+    
+    if (input->move_down.ended_down) {
+        global_game_state->green_offset -= 1;
+    }
+    if (input->move_up.ended_down) {
         global_game_state->green_offset += 1;
+    }
+    if (input->move_left.ended_down) {
+        global_game_state->blue_offset += 1;
+    }
+    if (input->move_right.ended_down) {
+        global_game_state->blue_offset -= 1;
     }
 }
 
