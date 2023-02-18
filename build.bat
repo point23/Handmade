@@ -21,7 +21,7 @@ set common-compile-flags=^
     /Fmwin32_handmade.map ^
     /Z7
 
-set common-link-flags= user32.lib Gdi32.lib
+set common-link-flags= user32.lib Gdi32.lib winmm.lib
 
 cl %common-compile-flags% ^
    ..\code\win32_handmade.cpp ^

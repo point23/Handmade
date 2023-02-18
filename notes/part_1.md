@@ -1462,3 +1462,54 @@ Process
 
 # Chap#007 
 
+#### Section#01 Video Frame Rate
+
+The first law: Every time the monitor ask for a frame, we give it a new frame.
+
+The second law: We choose to always hit a fixed frame rate.
+
+Setup
+
+```c++
+u32 desired_scheduler_ms = 1;
+bool sleep_is_granular = timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
+
+s32 monitor_refresh_rate = 60;
+s32 game_update_rate = monitor_refresh_rate >> 1;
+real32 seconds_elapsed_per_frame = 1000.0f / (real32)game_update_rate;
+```
+
+Slow down
+
+```c++
+if (seconds_elapsed < target_seconds_per_frame) {
+    while (seconds_elapsed < target_seconds_per_frame) {
+        if (sleep_is_granular) {
+            u32 sleep_duration_ms =
+                (u32)(1000.0f * (target_seconds_per_frame - seconds_elapsed));
+            Sleep(cast_to_dword(sleep_duration_ms));
+        }
+        seconds_elapsed =
+            Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+    }
+} else {
+    // @todo Missed frame rate
+}
+```
+
+`Sleep` function
+
+-   Syntax: https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-sleep
+
+`timeBeginPeriod` function
+
+-   Syntax: https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
+
+
+
+
+
+
+
+
+

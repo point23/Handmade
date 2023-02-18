@@ -29,8 +29,8 @@
 // @note Dynamic loaded
 #include <windows.h>
 #include <xinput.h>
-
 #include <dSound.h.>
+#include <stdio.h>
 
 #include "handmade.cpp"
 
@@ -79,7 +79,7 @@ global Win32_Back_Buffer Global_Back_Buffer;
 global Direct_Sound_Buffer Global_Secondary_Sound_Buffer;
 
 // CPU counts per second
-global s64 Global_Perf_Frequency;
+global s64 global_perf_count_freq;
 
 // @hack Debug log for now...
 internal void
@@ -515,17 +515,18 @@ Win32_Process_Pending_Messages(Game_Controller_Input* keyboard_controller) {
 	switch (message.message) {
 	    case WM_SYSKEYDOWN:
 	    case WM_SYSKEYUP:
+            // 30 == 1, 31 == 0 | 1,
 	    case WM_KEYDOWN:
+            // 30 == 1, 31 == 1
 	    case WM_KEYUP: {
-		u32 w_param = (u32)message.wParam;
+		u32 vk_code = (u32)message.wParam;
 		u32 l_param = (u32)message.lParam;
-
-		u32& vk_code = w_param;
+		
 		bool was_down = (l_param & (1 << 30)) != 0;
 		bool is_down = (l_param & (1 << 31)) == 0;
 
-		if (was_down == is_down) break; // @note only handle it when btn state changed
-
+		if (was_down == is_down) break; // @note Only handle it when btn state changed
+		
 		if (vk_code == 'W') {
 		    Win32_Process_Keyboard_Message(&keyboard_controller->move_up, is_down);
 		} else if (vk_code == 'A') {
@@ -545,7 +546,7 @@ Win32_Process_Pending_Messages(Game_Controller_Input* keyboard_controller) {
 		} else if (vk_code == VK_ESCAPE) {
 		} else if (vk_code == VK_SPACE) {
 		}
-		
+
 		// @fixme There might be a waste of time trans s32 to bool
 		bool alt_down = l_param & (1 << 29);
 		if (vk_code == VK_F4 && alt_down) {
@@ -619,12 +620,27 @@ Win32_Main_Window_Callback(HWND window,
     return result;
 }
 
+inline LARGE_INTEGER
+Win32_Get_Wall_Clock() {
+    LARGE_INTEGER res;
+    QueryPerformanceCounter(&res);
+    return res;
+}
+
+inline real32
+Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
+    return ((real32)(end.QuadPart - start.QuadPart) / (real32)global_perf_count_freq);
+}
+
 s32 CALLBACK
 WinMain(HINSTANCE instance,
         HINSTANCE prev_instance,
         LPSTR cmd_line,
         s32 show_cmd)
 {
+    u32 desired_scheduler_ms = 1;
+    bool sleep_is_granular = timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
+    
     // Dynamically load functions
     Win32_Load_XInput();
 
@@ -632,14 +648,17 @@ WinMain(HINSTANCE instance,
     Win32_Resize_DIBSection(&Global_Back_Buffer, 1280, 720);
 
     // Retrieves performance frequency.
-    LARGE_INTEGER perf_frequency_res;
-    QueryPerformanceFrequency(&perf_frequency_res);
-    Global_Perf_Frequency = perf_frequency_res.QuadPart;
+    LARGE_INTEGER perf_freq_res;
+    QueryPerformanceFrequency(&perf_freq_res);
+    global_perf_count_freq = perf_freq_res.QuadPart;
 
+    // Setup our fixed update rates
+    s32 monitor_refresh_rate = 60;
+    s32 game_update_rate = monitor_refresh_rate >> 1;
+    const real32 target_seconds_per_frame = 1.0f / (real32)game_update_rate;
+    
     WNDCLASS window_class = {};
-    window_class.style =
-      CS_HREDRAW | CS_VREDRAW; // Redraw when adjust or move happend
-                               // vertically or horizontally.
+    window_class.style =  CS_HREDRAW | CS_VREDRAW; // Redraw when adjust or move happend vertically or horizontally.
     window_class.lpfnWndProc = Win32_Main_Window_Callback;
     window_class.hInstance = instance;
     window_class.lpszClassName = "Handmade_Window_Class";
@@ -677,9 +696,8 @@ WinMain(HINSTANCE instance,
     assert(sound_samples);
 
     // Debug stuff, query last clock-cycle count;
-    LARGE_INTEGER last_counter;
-    QueryPerformanceCounter(&last_counter);
-    u64 last_cycle_count = __rdtsc();
+    LARGE_INTEGER last_counter = Win32_Get_Wall_Clock();
+    u64 last_cycle_count = __rdtsc(); // @todo Get rid of __rdtsc()
 
     // Init game input
     Game_Input inputs[2] = {};
@@ -711,8 +729,8 @@ WinMain(HINSTANCE instance,
     while (Global_Running) {
         Game_Controller_Input* keyboard_old = &old_input->controllers[0];
         Game_Controller_Input* keyboard_new = &new_input->controllers[0];
-        Game_Controller_Input empty_controller = {};
-        *keyboard_new = empty_controller;
+        Game_Controller_Input c_empty = {};
+	*keyboard_new = c_empty;
 	for (u32 idx = 0; idx < get_array_size(keyboard_old->buttons); idx++) {
 	    keyboard_new->buttons[idx].ended_down = keyboard_old->buttons[idx].ended_down;
 	}
@@ -821,7 +839,7 @@ WinMain(HINSTANCE instance,
             Game_Input* temp = new_input;
             new_input = old_input;
             old_input = temp;
-        }
+	}
 
         u32 offset;
         u32 target_cursor;
@@ -887,24 +905,41 @@ WinMain(HINSTANCE instance,
 
         { // Display debug data
             /* @note query performance data. */
-            LARGE_INTEGER end_counter;
-            QueryPerformanceCounter(&end_counter);
-            s64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
-            u64 end_cycle_count = __rdtsc();
-            u64 cycles_elapsed = end_cycle_count - last_cycle_count;
-
+            LARGE_INTEGER work_counter = Win32_Get_Wall_Clock();
+	    real32 seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, work_counter);
+	    
+	    // Slow things down to make sure that we hit the target frame rate
+	    if (seconds_elapsed < target_seconds_per_frame) {
+		while (seconds_elapsed < target_seconds_per_frame) {
+		    if (sleep_is_granular) {
+			u32 sleep_duration_ms =
+			    (u32)(1000.0f * (target_seconds_per_frame - seconds_elapsed));
+			Sleep(cast_to_dword(sleep_duration_ms));
+		    }
+		    seconds_elapsed =
+			    Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+		}
+	    } else {
+		// @todo Missed frame rate
+		Win32_Debug_Log("========= MISSED FRAME RATE ===========");
+	    }
+	    
+	    // Update performance data of current frame.
+	    LARGE_INTEGER end_counter = Win32_Get_Wall_Clock();
+	    u64 end_cycle_count = __rdtsc();
+	    u64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+	    u64 cycles_elapsed = end_cycle_count - last_cycle_count;
+	    
             // Milliseconds per frame
-            float mspf = (1000.0f * (float)counter_elapsed) / (float)Global_Perf_Frequency;
+            real32 mspf = (1000.0f * (real32)counter_elapsed) / (real32)global_perf_count_freq;
             // Frames per second
-            float fps = (float)Global_Perf_Frequency / (float)counter_elapsed;
+            real32 fps = (real32)global_perf_count_freq / (real32)counter_elapsed;
             // Mega-Cycles per frame
-            float mcpf = (float)cycles_elapsed / (1000.0f * 1000.0f);
+            real32 mcpf = (real32)cycles_elapsed / (1000.0f * 1000.0f);	    
+            char perf_log[256];
+            sprintf_s(perf_log, "%.2fms/f, %.2ff/s, %.2fmc/f\n", mspf, fps, mcpf);
+	    // Win32_Debug_Log(perf_log);
 
-            // char perf_log[256];
-            // sprintf(perf_log, "%.2fms/f, %.2ff/s, %.2fmc/f\n", mspf, fps,
-            // mcpf); Win32_Debug_Log(perf_log);
-
-            // Update performance data of current frame.
             last_counter = end_counter;
             last_cycle_count = end_cycle_count;
         }
