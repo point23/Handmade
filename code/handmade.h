@@ -43,8 +43,6 @@
 #define PI32 3.14159265359f
 
 // ==== Macros ====
-#define cast_to_dword(val) ((DWORD)val)
-
 #define get_array_size(arr) (sizeof(arr) / sizeof(arr[0]))
 #define kilo_bytes(size) (size * 1024)
 #define mega_bytes(size) (kilo_bytes(size) * 1024)
@@ -107,8 +105,8 @@ struct Game_Controller_Input
             Game_Button_State action_right;
             Game_Button_State left_shoulder;
             Game_Button_State right_shoulder;
-	    Game_Button_State start;
-	    Game_Button_State end;
+            Game_Button_State start;
+            Game_Button_State end;
         };
     };
 };
@@ -130,7 +128,9 @@ struct Game_State
 {
     int blue_offset = 0;
     int green_offset = 0;
+
     int tone_hz = 256;
+    real32 t_sine = 0;
 };
 
 struct Game_Memory

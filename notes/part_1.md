@@ -1460,7 +1460,7 @@ Process
 
 
 
-# Chap#007 
+# Chap#007 Fixme
 
 #### Section#01 Video Frame Rate
 
@@ -1474,26 +1474,27 @@ Setup
 u32 desired_scheduler_ms = 1;
 bool sleep_is_granular = timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
 
-s32 monitor_refresh_rate = 60;
-s32 game_update_rate = monitor_refresh_rate >> 1;
-real32 seconds_elapsed_per_frame = 1000.0f / (real32)game_update_rate;
+#define monitor_refresh_rate 60
+#define game_update_rate (monitor_refresh_rate >> 1)
+#define target_seconds_per_frame (1.0f / (real32)game_update_rate)
 ```
 
 Slow down
 
 ```c++
 if (seconds_elapsed < target_seconds_per_frame) {
-    while (seconds_elapsed < target_seconds_per_frame) {
-        if (sleep_is_granular) {
-            u32 sleep_duration_ms =
-                (u32)(1000.0f * (target_seconds_per_frame - seconds_elapsed));
-            Sleep(cast_to_dword(sleep_duration_ms));
-        }
-        seconds_elapsed =
-            Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+    if (sleep_is_granular) {
+        DWORD sleep_duration_ms =
+            (DWORD)(1000.0f *
+                    (target_seconds_per_frame - seconds_elapsed));
+        if (sleep_duration_ms > 0)
+            Sleep(sleep_duration_ms);
     }
-} else {
-    // @todo Missed frame rate
+
+    while (seconds_elapsed < target_seconds_per_frame) {
+        seconds_elapsed = Win32_Get_Seconds_Elapsed(
+            last_counter, Win32_Get_Wall_Clock());
+    }
 }
 ```
 
@@ -1504,6 +1505,115 @@ if (seconds_elapsed < target_seconds_per_frame) {
 `timeBeginPeriod` function
 
 -   Syntax: https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
+
+#### Section#02 Audio Synchronization
+
+There's a sound-buffer latency between play cursor and write cursor
+
+![image-20230221192820031](part_1.assets/image-20230221192820031.png)
+
+safety_bytes
+
+```c++
+struct Win32_Sound_Output
+{
+    const s32 samples_per_second = 48000;
+    const s32 bytes_per_sample = sizeof(s16) * 2;
+    /**
+     * @note Bytes in sound buffer be like:
+     * [ B B   B B    B B   B B  ]
+     * [[Left Right] [Left Right]]
+     */
+    const s32 buffer_size = samples_per_second * bytes_per_sample;
+
+    // @note About 1/3 frame...
+    // &: Here we ask for current sound buffer cursor
+    // w: Write cursor position
+    // |**********|: Bytes of exactly one frame of audio.
+    // On a low latency machine, we only need to write the bytes of one frame.
+    // Low latency:  |....&...w...|.....&.....|
+    //                            |***********|
+    // On a high latency machine, we need to write a few extra
+    //  bytes in case we don't hear any audio *gaps*
+    // High latency: |....&.......|..w..&.....|.....&
+    //                               |***********|__|
+    //                                        safty bytes
+    const s32 safety_bytes =
+      (samples_per_second * bytes_per_sample) / game_update_rate / 3;
+    u32 running_sample_idx = 0;
+};
+```
+
+Process
+
+```c++
+
+const u32 sound_bytes_per_frame = (sound_output.samples_per_second * sound_output.bytes_per_sample) / game_update_rate; // 30hz
+
+DWORD play_cursor;
+DWORD write_cursor;
+if (global_sound_buffer->GetCurrentPosition(
+    &play_cursor, &write_cursor) == DS_OK) {
+    if (!sound_is_valid) {
+        // In the first frame, we have set the running sample idx
+        // to make sure we're writing from the write cursor.
+
+        sound_output.running_sample_idx =
+            write_cursor / sound_output.bytes_per_sample;
+        sound_is_valid = true;
+    }
+
+    audio_lock_offset = (sound_output.running_sample_idx *
+                         sound_output.bytes_per_sample) %
+        sound_output.buffer_size;
+
+    // f: Flip counter
+    // a: Audio counter
+    //                    last frame   current frame
+    // Logic Frames: ...|...........F|--A.........|...
+    real32 from_last_flip_to_audio = Win32_Get_Seconds_Elapsed(
+        flip_counter, Win32_Get_Perf_Counter());
+
+    // *: We still expect to hear the audio of that frame
+    //      the same time we see we see that frame
+    //      so theres has to be some latency.
+    // Logic Frames: ...|...........F|--A**********|...
+    real32 pending_seconds =
+        target_seconds_per_frame - from_last_flip_to_audio;
+    DWORD pending_bytes = (DWORD)(pending_seconds / target_seconds_per_frame * (real32)sound_bytes_per_frame);
+    
+    DWORD expected_cursor = play_cursor + pending_bytes;
+
+    DWORD safe_write_cursor = write_cursor;
+    if (safe_write_cursor < play_cursor) {
+        safe_write_cursor += sound_output.buffer_size;
+    }
+
+    safe_write_cursor += sound_output.safety_bytes;
+    bool low_latency = safe_write_cursor <= expected_cursor;
+
+    // Target cursor indicates where we should write to.
+    u32 target_cursor = 0;
+    if (low_latency) {
+        target_cursor = expected_cursor + sound_bytes_per_frame;
+    } else {
+        target_cursor = write_cursor + sound_output.safety_bytes +
+            sound_bytes_per_frame;
+    }
+
+    target_cursor %= sound_output.buffer_size;
+
+    if (audio_lock_offset > target_cursor) {
+        // [*******t...o*****]
+        bytes_to_write =
+            sound_output.buffer_size - audio_lock_offset;
+        bytes_to_write += target_cursor;
+    } else {
+        // [.....o****t....]
+        bytes_to_write = target_cursor - audio_lock_offset;
+    }
+}
+```
 
 
 
