@@ -1,5 +1,10 @@
 #if !defined(WIN32_HANDMADE_H)
 
+#include <dSound.h.>
+#include <stdio.h>
+#include <windows.h>
+#include <xinput.h>
+
 #define Direct_Sound_Buffer LPDIRECTSOUNDBUFFER
 #define monitor_refresh_rate 60
 #define game_update_rate (monitor_refresh_rate >> 1)

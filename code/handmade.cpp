@@ -2,7 +2,7 @@
 
 global Game_State* global_game_state;
 
-// @hack Drawing blue-green gradient
+// Drawing blue-green gradient
 static void
 Render_Gradient(Game_Back_Buffer* buffer)
 {
@@ -21,7 +21,7 @@ Render_Gradient(Game_Back_Buffer* buffer)
     }
 }
 
-// @hack Play sin wave sounds
+//  Play sin wave sounds
 internal void
 Output_Sound(Game_Sound_Buffer* buffer)
 {
@@ -45,7 +45,6 @@ Output_Sound(Game_Sound_Buffer* buffer)
     }
 }
 
-// @hack
 internal void
 Handle_Controller_Input(Game_Controller_Input* input)
 {
@@ -69,11 +68,8 @@ Handle_Controller_Input(Game_Controller_Input* input)
     }
 }
 
-internal void
-Game_Update(Game_Memory* memory,
-            Game_Back_Buffer* back_buffer,
-            Game_Sound_Buffer* sound_buffer,
-            Game_Input* input)
+// @note Function signare is define in handmade.h
+extern "C" GAME_UPDATE(Game_Update)
 {
     global_game_state = (Game_State*)memory->permanent_storage;
     if (!memory->is_initialized) {

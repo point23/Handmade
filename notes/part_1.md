@@ -1,14 +1,3 @@
-## TODO-List
-
-​	Comment style: **TODO🚨** 
-
-1. Explain params of `WinMain`.
-2. Change the functions parts from `xxx()` to `xxx` function.
-3. What is a generated instruction?
-4. Platform independent API?
-5. Characters... come on...
-6. 
-
 ## Chap#000 Misc: Interesting Topics
 
 #### Section#01 Windows Data Types for String

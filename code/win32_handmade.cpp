@@ -24,15 +24,10 @@
    And it's some platform dependent stuff, we need to be able to calcu
    sinf()... on the Game-Layer instead of depend on something call out.
 */
-#include <math.h>
 
 // @note Dynamic loaded
-#include <dSound.h.>
-#include <stdio.h>
-#include <windows.h>
-#include <xinput.h>
+#include "handmade.h"
 
-#include "handmade.cpp"
 #include "win32_handmade.h"
 
 /* @fixme It's not suppose to have static global variables. */
@@ -58,19 +53,25 @@ Win32_Debug_Log(LPCSTR info)
     OutputDebugStringA("\n");
 }
 
+DEBUG_PLATFORM_FREE(Win32_Free)
+{
+    if (memory == NULL)
+        return;
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
+
 // @note File I/O Stuff
 // Use case:
 //     char* filename = "";
 //     File_Result res = {};
-//     Debug_Platform_Get(filename, res);
+//     Win32_Get(filename, res);
 //     if (res.content_size != 0) {
-//         Debug_Platform_Put("test.cpp", res.content_size, res.content);
+//         Win32_Put("test.cpp", res.content_size, res.content);
 //     } else {
 //         // Logging
 //     }
 //
-internal void
-Debug_Platform_Get(char* filename, File_Result* dest)
+DEBUG_PLATFORM_GET(Win32_Get)
 {
     void* result = 0;
     HANDLE file_handle = CreateFileA(filename,
@@ -97,7 +98,7 @@ Debug_Platform_Get(char* filename, File_Result* dest)
                 dest->content_size = bytes_read;
                 // Logging succeed
             } else {
-                Debug_Platform_Free(result);
+                Win32_Free(result);
                 result = 0;
             }
         }
@@ -107,16 +108,7 @@ Debug_Platform_Get(char* filename, File_Result* dest)
     dest->content = result;
 }
 
-internal void
-Debug_Platform_Free(void* memory)
-{
-    if (memory == NULL)
-        return;
-    VirtualFree(memory, 0, MEM_RELEASE);
-}
-
-internal bool
-Debug_Platform_Put(char* filename, DWORD buffer_size, void* buffer)
+DEBUG_PLATFORM_PUT(Win32_Put)
 {
     bool result = false;
     HANDLE file_handle = CreateFileA(filename,
@@ -137,6 +129,37 @@ Debug_Platform_Put(char* filename, DWORD buffer_size, void* buffer)
         CloseHandle(file_handle);
     } else {
         // Logging
+    }
+
+    return result;
+}
+
+// Game Code Stuff
+struct Win32_Game_Code
+{
+    HMODULE game_code_lib;
+    game_update* Update;
+    bool is_valid;
+};
+
+internal Win32_Game_Code
+Win32_Load_Game_Code(void)
+{
+    Win32_Game_Code result = {};
+
+    HMODULE lib = LoadLibraryA("handmade.dll");
+    // assert(result.game_code_lib != NULL);
+
+    if (lib) {
+        result.game_code_lib = lib;
+        result.Update = (game_update*)GetProcAddress(lib, "Game_Update");
+    }
+
+    if (!lib || !result.Update) {
+        result.is_valid = false;
+        result.Update = Game_Update_Stub;
+    } else {
+        result.is_valid = true;
     }
 
     return result;
@@ -612,8 +635,9 @@ WinMain(HINSTANCE instance,
     bool sleep_is_granular =
       timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
 
-    // Dynamically load functions
+    // Dynamically loaded stuff
     Win32_Load_XInput();
+    Win32_Game_Code game = Win32_Load_Game_Code();
 
     // Resize windows back buffer
     Win32_Resize_DIBSection(&global_back_buffer, 1280, 720);
@@ -933,7 +957,7 @@ WinMain(HINSTANCE instance,
                   bytes_to_write,
                   play_cursor,
                   write_cursor);
-                Win32_Debug_Log(audio_log);
+                // Win32_Debug_Log(audio_log);
 #endif
             } else {
                 sound_is_valid = false;
@@ -952,7 +976,7 @@ WinMain(HINSTANCE instance,
         sound_buffer.sample_count =
           bytes_to_write / sound_output.bytes_per_sample;
 
-        Game_Update(&game_memory, &back_buffer, &sound_buffer, new_input);
+        game.Update(&game_memory, &back_buffer, &sound_buffer, new_input);
 
         { // Render to screen
             HDC dc = GetDC(window);

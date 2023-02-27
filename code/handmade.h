@@ -19,6 +19,8 @@
   1 - Slow code welcome
  */
 
+#include <math.h>
+
 // ==== Type extends ====
 #define internal static
 #define global static
@@ -144,18 +146,23 @@ struct Game_Memory
 };
 
 // ==== Functions ====
-inline u32
+u32
 safe_truncate_u64(u64 value)
 {
     assert(value <= 0xFFFFFFFF); // @todo max_val_of(pod)
     return (u32)value;
 }
 
-internal void
-Game_Update(Game_Memory* memory,
-            Game_Back_Buffer* back_buffer,
-            Game_Sound_Buffer* sound_buffer,
-            Game_Input* input);
+#define GAME_UPDATE(name)                                                      \
+    void name(Game_Memory* memory,                                             \
+              Game_Back_Buffer* back_buffer,                                   \
+              Game_Sound_Buffer* sound_buffer,                                 \
+              Game_Input* input)
+typedef GAME_UPDATE(game_update);
+GAME_UPDATE(Game_Update_Stub)
+{
+    return;
+}
 
 #if HANDMADE_INTERNAL
 /*
@@ -168,14 +175,25 @@ struct File_Result
     u32 content_size;
 };
 
-internal void
-Debug_Platform_Get(char* filename, File_Result* dest);
+#define DEBUG_PLATFORM_GET(name) void name(char* filename, File_Result* dest)
+#define DEBUG_PLATFORM_PUT(name)                                               \
+    bool name(char* filename, u32 buffer_size, void* buffer)
+#define DEBUG_PLATFORM_FREE(name) void name(void* memory)
 
-internal void
-Debug_Platform_Free(void* memory);
+typedef DEBUG_PLATFORM_GET(defug_platform_get);
+typedef DEBUG_PLATFORM_PUT(defug_platform_put);
+typedef DEBUG_PLATFORM_FREE(defug_platform_free);
+#endif
 
-internal bool
-Debug_Platform_Put(char* filename, u32 buffer_size, void* buffer);
+#if HANDMADE_WIN32
+#include "windows.h"
+BOOL WINAPI
+DllMain(HINSTANCE hinstDLL, // handle to DLL module
+        DWORD fdwReason,    // reason for calling function
+        LPVOID lpReserved)  // reserved
+{
+    return TRUE; // Successful DLL_PROCESS_ATTACH.
+}
 #endif
 
 #define HANDMADE_H
