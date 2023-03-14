@@ -3,6 +3,8 @@ IF NOT EXIST .\build mkdir .\build
 
 pushd build
 
+del *.pdb > NUL 2> NUL
+
 rem === Disabled Warns ===
 rem warning 4201: nonstandard extension
 rem warning 4100: unreferenced formal parameter
@@ -20,15 +22,16 @@ set common-compile-flags=^
     /FC ^
     /Z7
 
-set common-link-flags= user32.lib Gdi32.lib winmm.lib
+set common-link-flags=-incremental:no -opt:ref user32.lib Gdi32.lib winmm.lib
 
 cl %common-compile-flags% ^
-   ..\code\handmade.cpp ^
-   /Fmwin32_handmade.map ^
-   /LD /link /EXPORT:Game_Update
+..\code\handmade.cpp ^
+/Fmhandmade.map ^
+/LD /link /EXPORT:Game_Update -incremental:no -PDB:handmade_%time:~0,2%%time:~3,2%%time:~6,2%.pdb
 
 cl %common-compile-flags% ^
-   ..\code\win32_handmade.cpp ^
-   /Fmhandmade.map ^
-   /link %common-link-flags%
+..\code\win32_handmade.cpp ^
+/Fmwin32_handmade.map ^
+/link %common-link-flags%
+
 popd

@@ -185,16 +185,16 @@ typedef DEBUG_PLATFORM_PUT(defug_platform_put);
 typedef DEBUG_PLATFORM_FREE(defug_platform_free);
 #endif
 
-#if HANDMADE_WIN32
-#include "windows.h"
-BOOL WINAPI
-DllMain(HINSTANCE hinstDLL, // handle to DLL module
-        DWORD fdwReason,    // reason for calling function
-        LPVOID lpReserved)  // reserved
-{
-    return TRUE; // Successful DLL_PROCESS_ATTACH.
-}
-#endif
+// #if HANDMADE_WIN32
+// #include "windows.h"
+// BOOL WINAPI
+// DllMain(HINSTANCE hinstDLL, // handle to DLL module
+//         DWORD fdwReason,    // reason for calling function
+//         LPVOID lpReserved)  // reserved
+// {
+//     return TRUE; // Successful DLL_PROCESS_ATTACH.
+// }
+// #endif
 
 #define HANDMADE_H
 #endif

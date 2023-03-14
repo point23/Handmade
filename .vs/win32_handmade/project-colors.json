@@ -1,0 +1,61 @@
+{
+  "Version": 1,
+  "ProjectMap": {
+    "806c45f1-5aef-4092-926c-b1ee0ee874b5": {
+      "ProjectGuid": "806c45f1-5aef-4092-926c-b1ee0ee874b5",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 0
+    },
+    "a2fe74e1-b743-11d0-ae1a-00a0c90fffc3": {
+      "ProjectGuid": "a2fe74e1-b743-11d0-ae1a-00a0c90fffc3",
+      "DisplayName": "Miscellaneous Files",
+      "ColorIndex": -1
+    },
+    "a7a2a36c-3c53-4ccb-b52e-425623e2dda5": {
+      "ProjectGuid": "a7a2a36c-3c53-4ccb-b52e-425623e2dda5",
+      "DisplayName": "Miscellaneous Files",
+      "ColorIndex": 1
+    },
+    "4b095dee-6aa2-4ffc-8398-8af456e8e348": {
+      "ProjectGuid": "4b095dee-6aa2-4ffc-8398-8af456e8e348",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 2
+    },
+    "41fbd5d0-87d4-48a1-97e4-70613ebd0aaf": {
+      "ProjectGuid": "41fbd5d0-87d4-48a1-97e4-70613ebd0aaf",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 3
+    },
+    "a66c8ecb-2a10-48d6-9e2b-be6db6b96e9f": {
+      "ProjectGuid": "a66c8ecb-2a10-48d6-9e2b-be6db6b96e9f",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 4
+    },
+    "f7499b61-43be-4331-9963-29ffebb645e3": {
+      "ProjectGuid": "f7499b61-43be-4331-9963-29ffebb645e3",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 5
+    },
+    "2b99cbd7-bab8-40a4-a210-bc04170cbb63": {
+      "ProjectGuid": "2b99cbd7-bab8-40a4-a210-bc04170cbb63",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 6
+    },
+    "096a7fa4-75d4-4f81-bafc-9678c27bb59a": {
+      "ProjectGuid": "096a7fa4-75d4-4f81-bafc-9678c27bb59a",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 7
+    },
+    "ff221536-a1b9-4264-b215-32484c468d13": {
+      "ProjectGuid": "ff221536-a1b9-4264-b215-32484c468d13",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 8
+    },
+    "f9faa5fc-4af9-494f-8d8e-19349ba42e92": {
+      "ProjectGuid": "f9faa5fc-4af9-494f-8d8e-19349ba42e92",
+      "DisplayName": "win32_handmade",
+      "ColorIndex": 9
+    }
+  },
+  "NextColorIndex": 10
+}

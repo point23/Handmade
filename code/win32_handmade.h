@@ -1,6 +1,7 @@
 #if !defined(WIN32_HANDMADE_H)
 
 #include <dSound.h.>
+#include <malloc.h>
 #include <stdio.h>
 #include <windows.h>
 #include <xinput.h>

@@ -44,6 +44,9 @@ global Direct_Sound_Buffer global_sound_buffer;
 // CPU counts per second
 global s64 global_perf_count_freq;
 
+char SOURCE_DLL_NAME[] = "handmade.dll";
+char TEMP_DLL_NAME[] = "handmade_temp.dll";
+
 // @hack Debug log for now...
 internal void
 Win32_Debug_Log(LPCSTR info)
@@ -138,31 +141,60 @@ DEBUG_PLATFORM_PUT(Win32_Put)
 struct Win32_Game_Code
 {
     HMODULE game_code_lib;
+    FILETIME dll_last_write_time;
     game_update* Update;
     bool is_valid;
 };
 
+inline FILETIME
+Win32_Get_File_Time(char* filename)
+{
+    FILETIME last = {};
+
+    WIN32_FIND_DATA find_data;
+    HANDLE find_handle = FindFirstFileA(filename, &find_data);
+    if (find_handle != INVALID_HANDLE_VALUE) {
+        FindClose(find_handle);
+        last = find_data.ftLastWriteTime;
+    }
+    return last;
+}
+
 internal Win32_Game_Code
-Win32_Load_Game_Code(void)
+Win32_Load_Game_Code(char* source_dll_path, char* temp_dll_path)
 {
     Win32_Game_Code result = {};
 
-    HMODULE lib = LoadLibraryA("handmade.dll");
-    // assert(result.game_code_lib != NULL);
+    result.dll_last_write_time = Win32_Get_File_Time(source_dll_path);
+
+    CopyFile(source_dll_path, temp_dll_path, FALSE);
+    HMODULE lib = LoadLibraryA(temp_dll_path);
 
     if (lib) {
         result.game_code_lib = lib;
         result.Update = (game_update*)GetProcAddress(lib, "Game_Update");
+
+        result.is_valid = result.Update != NULL;
     }
 
-    if (!lib || !result.Update) {
+    if (!result.is_valid) {
         result.is_valid = false;
         result.Update = Game_Update_Stub;
-    } else {
-        result.is_valid = true;
     }
 
     return result;
+}
+
+internal void
+Win32_Unload_Game_Code(Win32_Game_Code* game)
+{
+    if (game->game_code_lib) {
+        FreeLibrary(game->game_code_lib);
+        game->game_code_lib = 0;
+    }
+
+    game->is_valid = false;
+    game->Update = Game_Update_Stub;
 }
 
 // @note Controller Stuff
@@ -635,9 +667,36 @@ WinMain(HINSTANCE instance,
     bool sleep_is_granular =
       timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
 
+    char exe_path[MAX_PATH];
+    DWORD fliename_size = GetModuleFileNameA(NULL, exe_path, sizeof(exe_path));
+    char* one_past_last_slash = exe_path;
+    for (char* i = exe_path + fliename_size;; --i) {
+        if (*i == '\\') {
+            one_past_last_slash = i + 1;
+            break;
+        }
+    }
+
+    u64 exe_dir_length = one_past_last_slash - exe_path;
+
+    char source_dll_path[MAX_PATH];
+    strncpy_s(
+      source_dll_path, sizeof(source_dll_path), exe_path, exe_dir_length);
+    strncpy_s(source_dll_path + exe_dir_length,
+              sizeof(source_dll_path),
+              SOURCE_DLL_NAME,
+              sizeof(SOURCE_DLL_NAME));
+
+    char temp_dll_path[MAX_PATH];
+    strncpy_s(temp_dll_path, sizeof(temp_dll_path), exe_path, exe_dir_length);
+    strncpy_s(temp_dll_path + exe_dir_length,
+              sizeof(temp_dll_path),
+              TEMP_DLL_NAME,
+              sizeof(TEMP_DLL_NAME));
+
     // Dynamically loaded stuff
     Win32_Load_XInput();
-    Win32_Game_Code game = Win32_Load_Game_Code();
+    Win32_Game_Code game = Win32_Load_Game_Code(source_dll_path, temp_dll_path);
 
     // Resize windows back buffer
     Win32_Resize_DIBSection(&global_back_buffer, 1280, 720);
@@ -726,6 +785,12 @@ WinMain(HINSTANCE instance,
 
     // Win32 main loop
     while (global_running) {
+        FILETIME new_write_time = Win32_Get_File_Time(SOURCE_DLL_NAME);
+        if (CompareFileTime(&new_write_time, &game.dll_last_write_time)) {
+            Win32_Unload_Game_Code(&game);
+            game = Win32_Load_Game_Code(source_dll_path, temp_dll_path);
+        }
+
         Game_Controller_Input* keyboard_old = &old_input->controllers[0];
         Game_Controller_Input* keyboard_new = &new_input->controllers[0];
         Game_Controller_Input c_empty = {};
@@ -987,18 +1052,18 @@ WinMain(HINSTANCE instance,
             ReleaseDC(window, dc);
         }
 
-        { // Fill sound output
-            Win32_Try_Fill_Sound_Buffer(
-              &sound_output, audio_lock_offset, bytes_to_write, &sound_buffer);
-        }
-
         //   logic#1        logic#2
         // |............|............|..........
         //              F   render#1     render#2
         // Flip is when we render the current frame
         flip_counter = Win32_Get_Perf_Counter();
 
-        { // Display debug data
+        { // Fill sound output
+            Win32_Try_Fill_Sound_Buffer(
+              &sound_output, audio_lock_offset, bytes_to_write, &sound_buffer);
+        }
+
+        { // Consume the rest frame time and display debug data
             /* @note query performance data. */
             real32 seconds_elapsed =
               Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Perf_Counter());
@@ -1040,7 +1105,8 @@ WinMain(HINSTANCE instance,
 
             char perf_log[256];
             sprintf_s(perf_log, "%.2fms/f, %df/s\n", mspf, fps);
-            Win32_Debug_Log(perf_log);
+
+            // Win32_Debug_Log(perf_log);
 #endif
             last_counter = end_counter;
             // last_cycle_count = end_cycle_count;
