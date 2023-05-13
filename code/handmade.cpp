@@ -2,84 +2,88 @@
 
 global Game_State* global_game_state;
 
-// Drawing blue-green gradient
-static void
-Render_Gradient(Game_Back_Buffer* buffer)
-{
-    u8* row = (u8*)(buffer->bitmap);
-    for (s32 y = 0; y < buffer->height; y++) {
-        u32* pixel = (u32*)row;
-
-        for (s32 x = 0; x < buffer->width; x++) {
-            u8 blue_channel = (u8)(x + global_game_state->blue_offset);
-            u8 green_channel = (u8)(y + global_game_state->green_offset);
-
-            // @note Little-endian RGB: GB|AR
-            *pixel++ = (green_channel << 8) | blue_channel;
-        }
-        row += buffer->pitch;
-    }
-}
-
 //  Play sin wave sounds
 internal void
 Output_Sound(Game_Sound_Buffer* buffer)
 {
-    const s16 tone_volume = 3000;
-    // @note Samples-per-circle = samples-per-second / frequency
-    s32 wave_period = buffer->samples_per_second / global_game_state->tone_hz;
-
-    s16* write_cursor = buffer->samples;
-
-    for (s32 i = 0; i < buffer->sample_count; i++) {
-        float sine_val = sinf((real32)(global_game_state->t_sine));
-        s16 sample_val = (s16)(tone_volume * sine_val);
-        *write_cursor++ = sample_val; // Left
-        *write_cursor++ = sample_val; // Right
-
-        global_game_state->t_sine +=
-          (real32)(2.0f * PI32 * (1.0f / (real32)wave_period));
-        if (global_game_state->t_sine > 2.0f * PI32) {
-            global_game_state->t_sine -= (real32)(2.0f * PI32);
-        }
-    }
 }
 
 internal void
 Handle_Controller_Input(Game_Controller_Input* input)
 {
-    if (input->is_analog) {
-        global_game_state->tone_hz =
-          256 + (s32)(128.0f * input->stick_average_x);
-        global_game_state->blue_offset += (s32)(4.0f * input->stick_average_x);
+}
+
+inline s32
+round_real32_to_s32(real32 val)
+{
+    s32 res = (s32)(val + 0.5f);
+    return res;
+}
+
+internal void
+Draw_Rectangle(Game_Back_Buffer* buffer,
+               real32 l_,
+               real32 r_,
+               real32 b_,
+               real32 t_)
+{
+    s32 l = round_real32_to_s32(l_);
+    s32 r = round_real32_to_s32(r_);
+    s32 b = round_real32_to_s32(b_);
+    s32 t = round_real32_to_s32(t_);
+
+    if (l > r) {
+        // swap(l, r); // @ImplementMe
+    }
+    if (b > t) {
+        // swap(b, t); // @ImplementMe
     }
 
-    if (input->move_down.ended_down) {
-        global_game_state->green_offset -= 1;
-    }
-    if (input->move_up.ended_down) {
-        global_game_state->green_offset += 1;
-    }
-    if (input->move_left.ended_down) {
-        global_game_state->blue_offset += 1;
-    }
-    if (input->move_right.ended_down) {
-        global_game_state->blue_offset -= 1;
+    if (l < 0)
+        l = 0;
+    if (l > buffer->width)
+        l = buffer->width;
+
+    if (r < 0)
+        r = 0;
+    if (r > buffer->width)
+        r = buffer->width;
+
+    if (b < 0)
+        b = 0;
+    if (b > buffer->height)
+        b = buffer->height;
+
+    if (t < 0)
+        t = 0;
+    if (t > buffer->height)
+        r = buffer->height;
+
+    u32 color = 0xFFFFFFFF;
+    u8* row =
+      (u8*)buffer->bitmap + l * buffer->bytes_per_pixel + b * buffer->pitch;
+    for (s32 y = b; y < t; y++) {
+        u32* pixel = (u32*)row;
+        for (s32 x = l; x < r; x++) {
+            *pixel++ |= color;
+        }
+        row += buffer->pitch;
     }
 }
 
-// @note Function signare is define in handmade.h
-extern "C" GAME_UPDATE(Game_Update)
+// @Note Function signare is define in handmade.h
+extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
     global_game_state = (Game_State*)memory->permanent_storage;
     if (!memory->is_initialized) {
-        global_game_state->tone_hz = 256;
-        global_game_state->t_sine = 0;
-
         memory->is_initialized = true;
     }
 
+    Draw_Rectangle(back_buffer, -10.0f, 20.0f, 30.0f, 40.0f);
     Handle_Controller_Input(&input->controllers[0]);
-    Render_Gradient(back_buffer);
+}
+
+extern "C" GET_SOUND_SAMPLES(Get_Sound_Samples)
+{
     Output_Sound(sound_buffer);
 }

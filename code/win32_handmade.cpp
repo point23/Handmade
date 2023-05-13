@@ -142,7 +142,8 @@ struct Win32_Game_Code
 {
     HMODULE game_code_lib;
     FILETIME dll_last_write_time;
-    game_update* Update;
+    guar* Update_And_Render;
+    gss* Get_Sound_Samples;
     bool is_valid;
 };
 
@@ -172,14 +173,18 @@ Win32_Load_Game_Code(char* source_dll_path, char* temp_dll_path)
 
     if (lib) {
         result.game_code_lib = lib;
-        result.Update = (game_update*)GetProcAddress(lib, "Game_Update");
+        result.Update_And_Render =
+          (guar*)GetProcAddress(lib, "Game_Update_And_Render");
+        result.Get_Sound_Samples =
+          (gss*)GetProcAddress(lib, "Get_Sound_Samples");
 
-        result.is_valid = result.Update != NULL;
+        result.is_valid = result.Update_And_Render && result.Get_Sound_Samples;
     }
 
     if (!result.is_valid) {
         result.is_valid = false;
-        result.Update = Game_Update_Stub;
+        result.Update_And_Render = Game_Update_And_Render_Stub;
+        result.Get_Sound_Samples = Get_Sound_Samples_Stub;
     }
 
     return result;
@@ -194,7 +199,8 @@ Win32_Unload_Game_Code(Win32_Game_Code* game)
     }
 
     game->is_valid = false;
-    game->Update = Game_Update_Stub;
+    game->Update_And_Render = Game_Update_And_Render_Stub;
+    game->Get_Sound_Samples = Get_Sound_Samples_Stub;
 }
 
 // @note Controller Stuff
@@ -464,8 +470,10 @@ Win32_Copy_Buffer_To_Window(HDC deviceContext,
                   // Destination rectangle
                   0,
                   0,
-                  window_width,
-                  window_height,
+                  //   window_width,
+                  //   window_height,
+                  buffer->width,
+                  buffer->height,
                   // Source rectangle
                   0,
                   0,
@@ -657,6 +665,97 @@ Win32_Get_Seconds_Elapsed(u64 start, u64 end)
     return ((real32)(end - start) / (real32)global_perf_count_freq);
 }
 
+internal void
+Win32_Get_Exe_Path(win32_state* state)
+{
+    DWORD fliename_size =
+      GetModuleFileNameA(NULL, state->exe_path, sizeof(state->exe_path));
+
+    char* one_past_last_slash = state->exe_path;
+    for (char* i = state->exe_path + fliename_size;; --i) {
+        if (*i == '\\') {
+            one_past_last_slash = i + 1;
+            break;
+        }
+    }
+
+    state->exe_dir_length = (s32)(one_past_last_slash - state->exe_path);
+}
+
+internal void
+Win32_Build_Path_In_Exe_Dir(win32_state* state,
+                            char* src,
+                            s32 src_size,
+                            char* dst,
+                            s32 dst_size)
+{
+    strncpy_s(dst, dst_size, state->exe_path, state->exe_dir_length);
+    strncpy_s(dst + state->exe_dir_length,
+              dst_size - state->exe_dir_length,
+              src,
+              src_size);
+}
+
+internal void
+Win32_End_Input_Recording(win32_state* state)
+{
+    CloseHandle(state->recording_handle);
+    state->input_recording_index = 0;
+}
+
+internal void
+Win32_Record_Input(win32_state* state, Game_Input* input)
+{
+    DWORD bytes_written;
+    WriteFile(
+      state->recording_handle, input, sizeof(*input), &bytes_written, 0);
+}
+
+internal void
+Win32_Begin_Input_Playing_Back(win32_state* state, s32 index)
+{
+    state->input_playing_index = index;
+    char filename[] = "handmade.hmi";
+    char filepath[WIN32_MAX_PATH];
+    Win32_Build_Path_In_Exe_Dir(
+      state, filename, sizeof(filename) - 1, filepath, sizeof(filepath));
+
+    state->playing_handle = CreateFileA(
+      filepath, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+
+    DWORD bytes_read;
+    ReadFile(state->playing_handle,
+             state->game_memory,
+             (u32)state->memory_size,
+             &bytes_read,
+             0);
+
+    assert(bytes_read == state->memory_size);
+}
+
+internal void
+Win32_End_Input_Playing_Back(win32_state* state)
+{
+    CloseHandle(state->playing_handle);
+    state->input_playing_index = 0;
+}
+
+internal void
+Win32_Play_Back_Input(win32_state* state, Game_Input* input)
+{
+    DWORD bytes_read;
+    if (ReadFile(state->playing_handle, input, sizeof(input), &bytes_read, 0)) {
+        if (bytes_read == 0) {
+            s32 index = state->input_playing_index;
+            Win32_End_Input_Playing_Back(state);
+            Win32_Begin_Input_Playing_Back(state, index);
+            ReadFile(
+              state->playing_handle, input, sizeof(*input), &bytes_read, 0);
+        }
+        assert(bytes_read == sizeof(*input));
+    }
+}
+
 s32 CALLBACK
 WinMain(HINSTANCE instance,
         HINSTANCE prev_instance,
@@ -667,39 +766,11 @@ WinMain(HINSTANCE instance,
     bool sleep_is_granular =
       timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
 
-    char exe_path[MAX_PATH];
-    DWORD fliename_size = GetModuleFileNameA(NULL, exe_path, sizeof(exe_path));
-    char* one_past_last_slash = exe_path;
-    for (char* i = exe_path + fliename_size;; --i) {
-        if (*i == '\\') {
-            one_past_last_slash = i + 1;
-            break;
-        }
-    }
-
-    u64 exe_dir_length = one_past_last_slash - exe_path;
-
-    char source_dll_path[MAX_PATH];
-    strncpy_s(
-      source_dll_path, sizeof(source_dll_path), exe_path, exe_dir_length);
-    strncpy_s(source_dll_path + exe_dir_length,
-              sizeof(source_dll_path),
-              SOURCE_DLL_NAME,
-              sizeof(SOURCE_DLL_NAME));
-
-    char temp_dll_path[MAX_PATH];
-    strncpy_s(temp_dll_path, sizeof(temp_dll_path), exe_path, exe_dir_length);
-    strncpy_s(temp_dll_path + exe_dir_length,
-              sizeof(temp_dll_path),
-              TEMP_DLL_NAME,
-              sizeof(TEMP_DLL_NAME));
-
     // Dynamically loaded stuff
     Win32_Load_XInput();
-    Win32_Game_Code game = Win32_Load_Game_Code(source_dll_path, temp_dll_path);
 
     // Resize windows back buffer
-    Win32_Resize_DIBSection(&global_back_buffer, 1280, 720);
+    Win32_Resize_DIBSection(&global_back_buffer, 960, 540);
 
     // Retrieves performance frequency.
     LARGE_INTEGER perf_freq_res;
@@ -742,10 +813,20 @@ WinMain(HINSTANCE instance,
       0, sound_output.buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     assert(sound_samples);
 
+    // Frame rate stuff
+    u64 last_counter = Win32_Get_Perf_Counter();
+    // u64 last_cycle_count = __rdtsc(); // @todo Get rid of __rdtsc()
+    const real32 target_seconds_per_frame = (1.0f / (real32)game_update_rate);
+
+    // Audio stuff
+    u64 flip_counter = Win32_Get_Perf_Counter();
+    bool sound_is_valid = false;
+
     // Init game input
     Game_Input inputs[2] = {};
     Game_Input* old_input = &inputs[0];
     Game_Input* new_input = &inputs[1];
+    new_input->seconds_to_advance_over_update = target_seconds_per_frame;
 
     // Allocate game memory
 #if HANDMADE_INTERNAL
@@ -771,14 +852,29 @@ WinMain(HINSTANCE instance,
         assert(game_memory.transient_storage != NULL);
     }
 
-    // Frame rate stuff
-    u64 last_counter = Win32_Get_Perf_Counter();
-    // u64 last_cycle_count = __rdtsc(); // @todo Get rid of __rdtsc()
-    const real32 target_seconds_per_frame = (1.0f / (real32)game_update_rate);
+    win32_state state = {};
+    char source_dll_path[WIN32_MAX_PATH];
+    char temp_dll_path[WIN32_MAX_PATH];
+    { // Init game state
+        state.game_memory = game_memory.permanent_storage;
+        state.memory_size = game_memory.permanent_storage_size;
+        Win32_Get_Exe_Path(&state);
 
-    // Audio stuff
-    u64 flip_counter = Win32_Get_Perf_Counter();
-    bool sound_is_valid = false;
+        char source_dll_name[] = "handmade.dll";
+        Win32_Build_Path_In_Exe_Dir(&state,
+                                    source_dll_name,
+                                    sizeof(source_dll_name) - 1,
+                                    source_dll_path,
+                                    sizeof(source_dll_path));
+
+        char temp_dll_name[] = "handmade_temp.dll";
+        Win32_Build_Path_In_Exe_Dir(&state,
+                                    temp_dll_name,
+                                    sizeof(temp_dll_name) - 1,
+                                    temp_dll_path,
+                                    sizeof(temp_dll_path));
+    }
+    Win32_Game_Code game = Win32_Load_Game_Code(source_dll_path, temp_dll_path);
 
     // Let's rock...
     global_running = true;
@@ -811,6 +907,7 @@ WinMain(HINSTANCE instance,
             for (u32 it_idx = 1; it_idx <= max_controller_count; it_idx++) {
                 Game_Controller_Input* old_controller =
                   &old_input->controllers[it_idx];
+
                 Game_Controller_Input* new_controller =
                   &new_input->controllers[it_idx];
 
@@ -822,6 +919,7 @@ WinMain(HINSTANCE instance,
                 }
 
                 new_controller->is_connected = true;
+                new_controller->is_analog = old_controller->is_analog;
                 const real32 stick_move_threshold = 0.5;
 
                 // Controller is connected
@@ -851,6 +949,10 @@ WinMain(HINSTANCE instance,
                       gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
                     bool dpad_right =
                       gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+
+                    if (dpad_up || dpad_down || dpad_left || dpad_right) {
+                        new_controller->is_analog = true;
+                    }
 
                     if (dpad_up)
                         new_controller->stick_average_y = 1.0f;
@@ -922,8 +1024,14 @@ WinMain(HINSTANCE instance,
                       &new_controller->right_shoulder,
                       gamepad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
                 }
-            }
 
+                // if (state.input_recording_index != 0) {
+                //     Win32_Record_Input(&win32_state, new_input);
+                // }
+                // if (state.input_playing_index != 0) {
+                //     Win32_Play_Back_Input(&state, new_input);
+                // }
+            }
             // @todo Impl swap
             Game_Input* temp = new_input;
             new_input = old_input;
@@ -1034,6 +1142,7 @@ WinMain(HINSTANCE instance,
         back_buffer.width = global_back_buffer.width;
         back_buffer.height = global_back_buffer.height;
         back_buffer.pitch = global_back_buffer.pitch;
+        back_buffer.bytes_per_pixel = global_back_buffer.bytes_per_pixel;
 
         Game_Sound_Buffer sound_buffer = {};
         sound_buffer.samples = sound_samples;
@@ -1041,7 +1150,8 @@ WinMain(HINSTANCE instance,
         sound_buffer.sample_count =
           bytes_to_write / sound_output.bytes_per_sample;
 
-        game.Update(&game_memory, &back_buffer, &sound_buffer, new_input);
+        game.Update_And_Render(&game_memory, &back_buffer, new_input);
+        game.Get_Sound_Samples(&sound_buffer);
 
         { // Render to screen
             HDC dc = GetDC(window);

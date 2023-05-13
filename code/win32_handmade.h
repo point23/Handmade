@@ -54,5 +54,22 @@ struct Win32_Sound_Output
     u32 running_sample_idx = 0;
 };
 
+#define WIN32_MAX_PATH MAX_PATH
+
+struct win32_state
+{
+    u64 memory_size;
+    void* game_memory;
+
+    HANDLE recording_handle;
+    HANDLE playing_handle;
+
+    s32 input_recording_index;
+    s32 input_playing_index;
+
+    char exe_path[WIN32_MAX_PATH];
+    s32 exe_dir_length;
+};
+
 #define WIN32_HANDMADE_H
 #endif

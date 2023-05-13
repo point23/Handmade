@@ -13,7 +13,7 @@ rem warning 4505: unreferenced function
 
 set common-compile-flags=^
     /nologo ^
-    /MT ^
+    /MTd ^
     /WX /W4 /wd4201 /wd4100 /wd4189 /wd4505 ^
     /DHANDMADE_SLOW=1 /DHANDMADE_INTERNAL=1 /DHANDMADE_WIN32=1^
     /GR- ^
@@ -27,7 +27,7 @@ set common-link-flags=-incremental:no -opt:ref user32.lib Gdi32.lib winmm.lib
 cl %common-compile-flags% ^
 ..\code\handmade.cpp ^
 /Fmhandmade.map ^
-/LD /link /EXPORT:Game_Update -incremental:no -PDB:handmade_%time:~0,2%%time:~3,2%%time:~6,2%.pdb
+/LD /link /EXPORT:Game_Update_And_Render /EXPORT:Get_Sound_Samples -incremental:no -PDB:handmade_%time:~0,2%%time:~3,2%%time:~6,2%.pdb
 
 cl %common-compile-flags% ^
 ..\code\win32_handmade.cpp ^

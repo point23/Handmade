@@ -65,9 +65,10 @@
 struct Game_Back_Buffer
 {
     void* bitmap;
-    int width;
-    int height;
-    int pitch;
+    s32 width;
+    s32 height;
+    s32 pitch;
+    s32 bytes_per_pixel;
 };
 
 struct Game_Sound_Buffer
@@ -119,6 +120,7 @@ struct Game_Input
     // 0    - keyboard
     // 1..4 - controller
     Game_Controller_Input controllers[5];
+    real32 seconds_to_advance_over_update;
 };
 
 struct Game_Clocks
@@ -127,13 +129,7 @@ struct Game_Clocks
 };
 
 struct Game_State
-{
-    int blue_offset = 0;
-    int green_offset = 0;
-
-    int tone_hz = 256;
-    real32 t_sine = 0;
-};
+{};
 
 struct Game_Memory
 {
@@ -153,13 +149,20 @@ safe_truncate_u64(u64 value)
     return (u32)value;
 }
 
-#define GAME_UPDATE(name)                                                      \
-    void name(Game_Memory* memory,                                             \
-              Game_Back_Buffer* back_buffer,                                   \
-              Game_Sound_Buffer* sound_buffer,                                 \
-              Game_Input* input)
-typedef GAME_UPDATE(game_update);
-GAME_UPDATE(Game_Update_Stub)
+// @Note GUAR
+#define GAME_UPDATE_AND_RENDER(name)                                           \
+    void name(                                                                 \
+      Game_Memory* memory, Game_Back_Buffer* back_buffer, Game_Input* input)
+typedef GAME_UPDATE_AND_RENDER(guar);
+GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Stub)
+{
+    return;
+}
+
+//@Note GSS
+#define GET_SOUND_SAMPLES(name) void name(Game_Sound_Buffer* sound_buffer)
+typedef GET_SOUND_SAMPLES(gss);
+GET_SOUND_SAMPLES(Get_Sound_Samples_Stub)
 {
     return;
 }
