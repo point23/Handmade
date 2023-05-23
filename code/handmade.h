@@ -55,49 +55,43 @@
 #if HANDMADE_SLOW
 #define assert(expr)                                                           \
     if (!(expr)) {                                                             \
-        *(int*)0 = 0;                                                          \
+        *(int *)0 = 0;                                                         \
     }
 #else
 #define assert(expr)
 #endif
 
 // ==== Structs ====
-struct Game_Back_Buffer
-{
-    void* bitmap;
+struct Game_Back_Buffer {
+    void *bitmap;
     s32 width;
     s32 height;
     s32 pitch;
     s32 bytes_per_pixel;
 };
 
-struct Game_Sound_Buffer
-{
-    s16* samples;
+struct Game_Sound_Buffer {
+    s16 *samples;
     int samples_per_second;
     int sample_count;
 };
 
-struct Game_Button_State
-{
+struct Game_Button_State {
     int half_transition_count;
     bool ended_down;
 };
 
-struct Game_Controller_Input
-{
+struct Game_Controller_Input {
     bool is_analog;
     bool is_connected;
     // @note Controller hardware is sampling...
     real32 stick_average_x;
     real32 stick_average_y;
 
-    union
-    {
+    union {
         Game_Button_State buttons[12];
 
-        struct
-        {
+        struct {
             Game_Button_State move_up;
             Game_Button_State move_down;
             Game_Button_State move_left;
@@ -114,74 +108,65 @@ struct Game_Controller_Input
     };
 };
 
-struct Game_Input
-{
+struct Game_Input {
     // @note
     // 0    - keyboard
     // 1..4 - controller
     Game_Controller_Input controllers[5];
     real32 seconds_to_advance_over_update;
+    real32 dt_per_frame;
 };
 
-struct Game_Clocks
-{
+struct Game_Clocks {
     real32 seconds_elapsed;
 };
 
-struct Game_State
-{};
+struct Game_State {
+    real32 player_x;
+    real32 player_y;
+};
 
-struct Game_Memory
-{
+struct Game_Memory {
     // @note Required to be cleared as 0 at startup
     u64 permanent_storage_size;
-    void* permanent_storage;
+    void *permanent_storage;
     u64 transient_storage_size;
-    void* transient_storage;
+    void *transient_storage;
     bool is_initialized;
 };
 
 // ==== Functions ====
-u32
-safe_truncate_u64(u64 value)
-{
+u32 safe_truncate_u64(u64 value) {
     assert(value <= 0xFFFFFFFF); // @todo max_val_of(pod)
     return (u32)value;
 }
 
 // @Note GUAR
 #define GAME_UPDATE_AND_RENDER(name)                                           \
-    void name(                                                                 \
-      Game_Memory* memory, Game_Back_Buffer* back_buffer, Game_Input* input)
+    void name(Game_Memory *memory, Game_Back_Buffer *back_buffer,              \
+              Game_Input *input)
 typedef GAME_UPDATE_AND_RENDER(guar);
-GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Stub)
-{
-    return;
-}
+GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Stub) { return; }
 
 //@Note GSS
-#define GET_SOUND_SAMPLES(name) void name(Game_Sound_Buffer* sound_buffer)
+#define GET_SOUND_SAMPLES(name) void name(Game_Sound_Buffer *sound_buffer)
 typedef GET_SOUND_SAMPLES(gss);
-GET_SOUND_SAMPLES(Get_Sound_Samples_Stub)
-{
-    return;
-}
+GET_SOUND_SAMPLES(Get_Sound_Samples_Stub) { return; }
 
 #if HANDMADE_INTERNAL
 /*
   @note
   They are not for shipping...
  */
-struct File_Result
-{
-    void* content;
+struct File_Result {
+    void *content;
     u32 content_size;
 };
 
-#define DEBUG_PLATFORM_GET(name) void name(char* filename, File_Result* dest)
+#define DEBUG_PLATFORM_GET(name) void name(char *filename, File_Result *dest)
 #define DEBUG_PLATFORM_PUT(name)                                               \
-    bool name(char* filename, u32 buffer_size, void* buffer)
-#define DEBUG_PLATFORM_FREE(name) void name(void* memory)
+    bool name(char *filename, u32 buffer_size, void *buffer)
+#define DEBUG_PLATFORM_FREE(name) void name(void *memory)
 
 typedef DEBUG_PLATFORM_GET(defug_platform_get);
 typedef DEBUG_PLATFORM_PUT(defug_platform_put);
