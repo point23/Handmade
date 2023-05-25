@@ -113,7 +113,6 @@ struct Game_Input {
     // 0    - keyboard
     // 1..4 - controller
     Game_Controller_Input controllers[5];
-    real32 seconds_to_advance_over_update;
     real32 dt_per_frame;
 };
 
@@ -121,17 +120,61 @@ struct Game_Clocks {
     real32 seconds_elapsed;
 };
 
+struct Tilemap {
+    u32* tiles;
+};
+
+struct World {
+    s32 num_tilemap_cols;
+    s32 num_tilmap_rows;
+
+    s32 num_world_cols;
+    s32 num_world_rows;
+
+    real32 upper_left_x;
+    real32 upper_left_y;
+
+    real32 tile_width;
+    real32 tile_height;
+
+    Tilemap* tilemaps;
+};
+
 struct Game_State {
-    real32 player_x;
-    real32 player_y;
+    Tilemap tilemaps[2];
+    // Hero info...?
+    s32 tilemap_x;
+    s32 tilemap_y;
+    real32 hero_x;
+    real32  hero_y;
+ };
+
+struct Canonical_Position {
+    s32 tilemap_x;
+    s32 tilemap_y;
+    s32 tile_x;
+    s32 tile_y;
+
+    // Tile related pos.
+    real32 offset_x;
+    real32 offset_y; 
+};
+
+struct Raw_Position {
+    s32 tilemap_x;
+    s32 tilemap_y;
+
+    // Screen related pos.
+    real32 x;
+    real32 y;
 };
 
 struct Game_Memory {
     // @note Required to be cleared as 0 at startup
     u64 permanent_storage_size;
-    void *permanent_storage;
+    void* permanent_storage;
     u64 transient_storage_size;
-    void *transient_storage;
+    void* transient_storage;
     bool is_initialized;
 };
 
@@ -159,7 +202,7 @@ GET_SOUND_SAMPLES(Get_Sound_Samples_Stub) { return; }
   They are not for shipping...
  */
 struct File_Result {
-    void *content;
+    void* content;
     u32 content_size;
 };
 

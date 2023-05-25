@@ -379,8 +379,7 @@ Win32_Window_Dimension Win32_Get_Window_Dimension(HWND window) {
     return {width, height};
 }
 
-internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width,
-                                      s32 height) {
+internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width, s32 height) {
     // @todo Add some Virtual Protect stuff in the future, we may want older
     // buffers for some reason.
 
@@ -409,22 +408,24 @@ internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width,
     buffer->pitch = buffer->width * buffer->bytes_per_pixel;
 }
 
-internal void Win32_Copy_Buffer_To_Window(HDC deviceContext,
-                                          Win32_Back_Buffer *buffer,
+internal void Win32_Copy_Buffer_To_Window(HDC dc, Win32_Back_Buffer *buffer,
                                           s32 window_width, s32 window_height) {
-    // @todo Aspect ratio correction
-    StretchDIBits(deviceContext,
-                  // Destination rectangle
-                  0, 0,
-                  //   window_width,
-                  //   window_height,
-                  buffer->width, buffer->height,
-                  // Source rectangle
-                  0, 0, buffer->width, buffer->height,
-                  // Source
-                  buffer->bitmap,
-                  // Destination
-                  &buffer->bmi, DIB_RGB_COLORS, SRCCOPY);
+    
+    s32 upper_left_x = 10, upper_left_y = 10;
+    
+    // @Note Fill in each four gutters, start from the upper gutter, anticlockwise.
+    PatBlt(dc, 0, 0, window_width, upper_left_y, BLACKNESS);
+    PatBlt(dc, 0, upper_left_y, upper_left_x, buffer->height, BLACKNESS);
+    PatBlt(dc, 0, upper_left_y + buffer->height, window_width, window_height - buffer->height - upper_left_y, BLACKNESS);
+    PatBlt(dc, upper_left_x + buffer->width, upper_left_y, window_width - upper_left_x - buffer->width, buffer->height, BLACKNESS);
+
+    // @Todo Aspect ratio correction is in need.
+    StretchDIBits(dc, 
+                  upper_left_x, upper_left_y, buffer->width, buffer->height, // Dest rectangle
+                  0, 0, buffer->width, buffer->height,                       // Source rectangle
+                  buffer->bitmap,                                            // Source bitmap
+                  &buffer->bmi,                                              // Dest bitmap
+                  DIB_RGB_COLORS, SRCCOPY);
 }
 
 internal void Win32_Process_XInput_Digital_Button(Game_Button_State *s_old,
@@ -434,8 +435,7 @@ internal void Win32_Process_XInput_Digital_Button(Game_Button_State *s_old,
     s_new->half_transition_count = (s_old->ended_down != is_down) ? 1 : 0;
 }
 
-internal real32 Win32_Process_XInput_Stick_Value(s32 dead_zone,
-                                                 real32 axis_value) {
+internal real32 Win32_Process_XInput_Stick_Value(s32 dead_zone, real32 axis_value) {
     const real32 abs_max_axis_val = 32768.0f;
     const real32 abs_min_axis_val = 32767.0f;
 
@@ -448,8 +448,7 @@ internal real32 Win32_Process_XInput_Stick_Value(s32 dead_zone,
     return result;
 }
 
-internal void Win32_Process_Keyboard_Message(Game_Button_State *state,
-                                             bool is_down) {
+internal void Win32_Process_Keyboard_Message(Game_Button_State *state, bool is_down) {
     if (state->ended_down != is_down) {
         state->ended_down = is_down;
         state->half_transition_count++;
@@ -462,9 +461,8 @@ internal void Win32_Process_Keyboard_Message(Game_Button_State *state,
  - Func with side effects: take things in, and modify it.
 */
 internal void
-Win32_Process_Pending_Messages(Game_Controller_Input *keyboard_controller) {
-    // @note Peek the newest message from queue without pending the
-    // application
+Win32_Process_Pending_Messages(Game_Controller_Input *keyboard) {
+    // @Note Take the newest message from queue without pending the application.
     MSG message;
     while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
         if (message.message == WM_QUIT)
@@ -473,54 +471,45 @@ Win32_Process_Pending_Messages(Game_Controller_Input *keyboard_controller) {
         switch (message.message) {
         case WM_SYSKEYDOWN:
         case WM_SYSKEYUP:
-            // 30 == 1, 31 == 0 | 1,
-        case WM_KEYDOWN:
-            // 30 == 1, 31 == 1
-        case WM_KEYUP: {
+        case WM_KEYDOWN: // 30 == 1, 31 == 0 | 1
+        case WM_KEYUP:   // 30 == 1, 31 == 1 
+        {
             u32 vk_code = (u32)message.wParam;
             u32 l_param = (u32)message.lParam;
 
             bool was_down = (l_param & (1 << 30)) != 0;
             bool is_down = (l_param & (1 << 31)) == 0;
 
-            if (was_down == is_down)
-                break; // @note Only handle it when btn state changed
+            if (was_down == is_down) break; // @Note Only handle it when btn state changed
 
             if (vk_code == 'W') {
-                Win32_Process_Keyboard_Message(&keyboard_controller->move_up,
-                                               is_down);
+                Win32_Process_Keyboard_Message(&keyboard->move_up, is_down);
             } else if (vk_code == 'A') {
-                Win32_Process_Keyboard_Message(&keyboard_controller->move_left,
-                                               is_down);
+                Win32_Process_Keyboard_Message(&keyboard->move_left, is_down);
             } else if (vk_code == 'S') {
-                Win32_Process_Keyboard_Message(&keyboard_controller->move_down,
-                                               is_down);
+                Win32_Process_Keyboard_Message(&keyboard->move_down, is_down);
             } else if (vk_code == 'D') {
-                Win32_Process_Keyboard_Message(&keyboard_controller->move_right,
-                                               is_down);
+                Win32_Process_Keyboard_Message(&keyboard->move_right, is_down);
             } else if (vk_code == VK_UP) {
-                Win32_Process_Keyboard_Message(&keyboard_controller->action_up,
-                                               is_down);
+                Win32_Process_Keyboard_Message(&keyboard->action_up, is_down);
             } else if (vk_code == VK_DOWN) {
-                Win32_Process_Keyboard_Message(
-                    &keyboard_controller->action_down, is_down);
+                Win32_Process_Keyboard_Message(&keyboard->action_down, is_down);
             } else if (vk_code == VK_LEFT) {
-                Win32_Process_Keyboard_Message(
-                    &keyboard_controller->action_left, is_down);
+                Win32_Process_Keyboard_Message(&keyboard->action_left, is_down);
             } else if (vk_code == VK_RIGHT) {
-                Win32_Process_Keyboard_Message(
-                    &keyboard_controller->action_right, is_down);
+                Win32_Process_Keyboard_Message(&keyboard->action_right, is_down);
             } else if (vk_code == VK_ESCAPE) {
             } else if (vk_code == VK_SPACE) {
             }
 
-            // @fixme There might be a waste of time trans s32 to bool
+            // @Fixme There might be a waste of time trans s32 to bool.
             bool alt_down = l_param & (1 << 29);
             if (vk_code == VK_F4 && alt_down) {
                 global_running = false;
             }
-        } break;
-        default: {
+         } break;
+        default:
+        {
             TranslateMessage(&message);
             DispatchMessage(&message);
         } break;
@@ -709,6 +698,11 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     u64 last_counter = Win32_Get_Perf_Counter();
     // u64 last_cycle_count = __rdtsc(); // @todo Get rid of __rdtsc()
     const real32 target_seconds_per_frame = (1.0f / (real32)game_update_rate);
+    { // @Note Debug show dt_per_frame
+        char log[128];
+        sprintf_s(log, "!!!!!!!!!!!!%.2fs/f!!!!!!!!!!!!!!!\n", target_seconds_per_frame);
+        Win32_Debug_Log(log);
+    }
 
     // Audio stuff
     u64 flip_counter = Win32_Get_Perf_Counter();
@@ -718,7 +712,7 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     Game_Input inputs[2] = {};
     Game_Input *old_input = &inputs[0];
     Game_Input *new_input = &inputs[1];
-    new_input->seconds_to_advance_over_update = target_seconds_per_frame;
+    new_input->dt_per_frame = target_seconds_per_frame;
 
     // Allocate game memory
 #if HANDMADE_INTERNAL
@@ -782,11 +776,20 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
         Game_Controller_Input c_empty = {};
         *keyboard_new = c_empty;
         for (u32 idx = 0; idx < get_array_size(keyboard_old->buttons); idx++) {
-            keyboard_new->buttons[idx].ended_down =
-                keyboard_old->buttons[idx].ended_down;
+            keyboard_new->buttons[idx].ended_down = keyboard_old->buttons[idx].ended_down;
         }
 
         Win32_Process_Pending_Messages(keyboard_new);
+        { // @Note Debug show dt_per_frame
+        //     char log[128];
+        //     s32 total_ended_down = 0;
+        //     for (u32 idx = 0; idx < get_array_size(keyboard_old->buttons); idx++) {
+        //        total_ended_down +=  keyboard_new->buttons[idx].ended_down ? 1 : 0;
+        //     }
+        //     sprintf_s(log, "~~~~~~~~~~~~~~~~~~~>%d", total_ended_down);
+        //     Win32_Debug_Log(log);
+        }
+
 
         { // Handle controller input
             u32 max_controller_count = XUSER_MAX_COUNT + 1;
@@ -1096,8 +1099,7 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
             char perf_log[256];
             sprintf_s(perf_log, "%.2fms/f, %df/s\n", mspf, fps);
-
-            // Win32_Debug_Log(perf_log);
+            Win32_Debug_Log(perf_log);
 #endif
             last_counter = end_counter;
             // last_cycle_count = end_cycle_count;

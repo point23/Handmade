@@ -27,7 +27,7 @@ set common-link-flags=-incremental:no -opt:ref user32.lib Gdi32.lib winmm.lib
 cl %common-compile-flags% ^
 ..\code\handmade.cpp ^
 /Fmhandmade.map ^
-/LD /link /EXPORT:Game_Update_And_Render /EXPORT:Get_Sound_Samples -incremental:no -PDB:handmade_%time:~0,2%%time:~3,2%%time:~6,2%.pdb
+/LD /link /EXPORT:Game_Update_And_Render /EXPORT:Get_Sound_Samples -PDB:handmade_pdb_%random%.pdb
 
 cl %common-compile-flags% ^
 ..\code\win32_handmade.cpp ^
