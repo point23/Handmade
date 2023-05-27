@@ -1,4 +1,5 @@
 #include "handmade.h"
+#include "handmade_intrinsics.h"
 
 #define NUM_TILEMAP_COLS 17
 #define NUM_TILEMAP_ROWS 9
@@ -6,79 +7,28 @@
 #define NUM_WORLD_COLS 2
 #define NUM_WORLD_ROWS 2
 
+// @Note We shouldn't setup the game world by something global since we are unloading and loading this lib quite often...
 global Game_State *global_game_state;
-// @Note !!! We shouldn't setup by something global.
-// Beacause we are unload and load this lib quiet often...
 
-s32 wrap_s32(s32 num, s32 lower_bound, s32 upper_bound) {
-    // @Note [lower, upper)
+void canonicalize_coord(World* world, s32 tilemap_count, s32 tile_count, s32* tilemap, s32* tile, real32* offset) {
+    s32 tile_offset = floor_real32_to_s32(*offset / world->tile_side_in_meters);
+    *tile += tile_offset;
+    *offset -= (real32)tile_offset * world->tile_side_in_meters;
 
-    s32 range = upper_bound - lower_bound;
-    s32 offset = (num - lower_bound) % range;
-    if (offset < 0) {
-        return upper_bound + offset;
-    }
-    return lower_bound + offset;
-}
-
-#include "math.h"
-s32 floor_real32_to_s32(real32 val) {
-    s32 res = (s32)floorf(val);
-    return res;
-}
-
-u32 round_real32_to_u32(real32 val) {
-    u32 res = (u32)(val + 0.5f);
-    return res;
-}
-
-s32 round_real32_to_s32(real32 val) {
-    s32 res = (s32)(val + 0.5f);
-    return res;
-}
-
-Canonical_Position get_canonical_position(World* world, Raw_Position raw) {
-    s32 tilemap_x = raw.tilemap_x;
-    s32 tilemap_y = raw.tilemap_y;
-
-    real32 x = raw.x - world->upper_left_x;
-    real32 y = raw.y - world->upper_left_y;
-
-    s32 tile_x = floor_real32_to_s32(x / world->tile_width);
-    s32 tile_y = floor_real32_to_s32(y / world->tile_height);
-
-    real32 tile_offset_x = x - ((real32)tile_x * world->tile_width);
-    real32 tile_offset_y = y - ((real32)tile_y * world->tile_height);
-
-    if (tile_x < 0) {
-        tile_x = wrap_s32(tile_x, 0, world->num_tilemap_cols);
-        tilemap_x = wrap_s32(tilemap_x - 1, 0, world->num_world_cols);
+    if (*tile < 0) {
+        *tile = wrap_s32(*tile, 0, tile_count);
+        *tilemap = wrap_s32(*tilemap - 1, 0, tilemap_count);
     }
     
-    if (tile_x >= world->num_tilemap_cols) {
-        tile_x = wrap_s32(tile_x, 0, world->num_tilemap_cols);
-        tilemap_x = wrap_s32(tilemap_x + 1, 0, world->num_world_cols);
+    if (*tile >= tile_count) {
+        *tile = wrap_s32(*tile, 0, tile_count);
+        *tilemap = wrap_s32(*tilemap + 1, 0, tilemap_count);
     }
+}
 
-    if (tile_y < 0) {
-        tile_y = wrap_s32(tile_y, 0, world->num_tilmap_rows);
-        tilemap_y = wrap_s32(tilemap_y - 1, 0, world->num_world_rows);
-    }
-
-    if (tile_y >= world->num_tilmap_rows) {
-        tile_y = wrap_s32(tile_y, 0, world->num_tilmap_rows);
-        tilemap_y = wrap_s32(tilemap_y + 1, 0, world->num_world_rows);
-    }
-
-    Canonical_Position can = {};
-    can.tilemap_x = tilemap_x;
-    can.tilemap_y = tilemap_y;
-    can.tile_x = tile_x;
-    can.tile_y = tile_y;
-    can.offset_x = tile_offset_x;
-    can.offset_y = tile_offset_y;
-
-    return can;
+void canonicalize_position(World* world, Canonical_Position* pos) {
+    canonicalize_coord(world, world->num_world_cols, world->num_tilemap_cols, &pos->tilemap_x, &pos->tile_x, &pos->offset_x);
+    canonicalize_coord(world, world->num_world_rows, world->num_tilemap_rows, &pos->tilemap_y, &pos->tile_y, &pos->offset_y);
 }
 
 u32 get_tilemap_value(World* world, Tilemap* tilemap, s32 tile_x, s32 tile_y) {
@@ -86,27 +36,26 @@ u32 get_tilemap_value(World* world, Tilemap* tilemap, s32 tile_x, s32 tile_y) {
     return val;
 }
 
-Tilemap* get_tilemap(World* world, s32 x, s32 y) {
+Tilemap* get_tilemap(World* world, s32 tilemap_x, s32 tilemap_y) {
     Tilemap* tilemap = NULL;
-    if (x >= 0 && x < world->num_world_cols && y >= 0 && y < world->num_world_rows) {
-        tilemap = &world->tilemaps[y * world->num_world_cols + x];        
+    if (tilemap_x >= 0 && tilemap_x < world->num_world_cols && tilemap_y >= 0 && tilemap_y < world->num_world_rows) {
+        tilemap = &world->tilemaps[tilemap_y * world->num_world_cols + tilemap_x];        
     }
     return tilemap;
 }
 
-bool is_world_point_empty(World* world, Raw_Position raw) {
-    Canonical_Position can = get_canonical_position(world, raw);
-    Tilemap* tilemap = get_tilemap(world, can.tilemap_x, can.tilemap_y);
+bool is_world_point_empty(World* world, Canonical_Position pos) {
+    Tilemap* tilemap = get_tilemap(world, pos.tilemap_x, pos.tilemap_y);
 
     if (!tilemap) return false;
 
-    if (can.tile_x < 0 || can.tile_y < 0 
-        || can.tile_x >= world->num_tilemap_cols
-        || can.tile_y >= world->num_tilmap_rows) {
+    if (pos.tile_x < 0 || pos.tile_y < 0 
+        || pos.tile_x >= world->num_tilemap_cols
+        || pos.tile_y >= world->num_tilemap_rows) {
         return false;
     }
 
-    u32 val = get_tilemap_value(world, tilemap, can.tile_x, can.tile_y);
+    u32 val = get_tilemap_value(world, tilemap, pos.tile_x, pos.tile_y);
     return val != 1; // @Fixme Don't mess up with magic numbers.
 }
 
@@ -121,39 +70,29 @@ internal void Handle_Game_Input(Game_Input *input, World* world) {
         if (controller.move_left.ended_down)  dx = -1.0f;
         if (controller.move_right.ended_down) dx = 1.0f;
 
-        // dy = 1.0f;
-        dx *= 128.0f, dy *= 128.0f; // @Note Amplification
-
-        Game_State* gs = global_game_state;
-        Tilemap *tilemap = get_tilemap(world, gs->tilemap_x, gs->tilemap_y);
-
         real32 dt = input->dt_per_frame;
-        real32 new_hero_x = gs->hero_x + dt * dx;
-        real32 new_hero_y = gs->hero_y + dt * dy;
+        dt *= 5.0f; // @Note Speed.
 
-        real32 player_width = 0.75f * world->tile_width; // @Todo Extract it somewhere.
+        Canonical_Position new_center = global_game_state->hero_position;
+        new_center.offset_x += dt * dx;
+        new_center.offset_y += dt * dy;
 
-        Raw_Position new_center;
-        new_center.tilemap_x = gs->tilemap_x;
-        new_center.tilemap_y = gs->tilemap_y;
-        new_center.x = new_hero_x;
-        new_center.y = new_hero_y;
+        real32 player_width = 0.75f * world->tile_side_in_meters; // @Todo Extract it somewhere.
 
-        Raw_Position new_left = new_center;
-        new_left.x -= 0.5f * player_width;
+        Canonical_Position new_left = new_center;
+        new_left.offset_x -= 0.5f * player_width;
         
-        Raw_Position new_right = new_center;
-        new_right.x += 0.5f * player_width;
+        Canonical_Position new_right = new_center;
+        new_right.offset_x += 0.5f * player_width;
+
+        canonicalize_position(world, &new_center);
+        canonicalize_position(world, &new_left);
+        canonicalize_position(world, &new_right);
 
         if (is_world_point_empty(world, new_center)
             && is_world_point_empty(world, new_left)
             && is_world_point_empty(world, new_right)) {
-            Canonical_Position can = get_canonical_position(world, new_center);
-
-            gs->tilemap_x = can.tilemap_x;
-            gs->tilemap_y = can.tilemap_y;
-            gs->hero_x = world->upper_left_x + (real32)can.tile_x * world->tile_width + can.offset_x;
-            gs->hero_y = world->upper_left_y + (real32)can.tile_y * world->tile_height + can.offset_y;
+            global_game_state->hero_position = new_center;
         }
     }
 }
@@ -249,17 +188,18 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
 
     { // @Note Setup game world data.
         world.num_tilemap_cols = NUM_TILEMAP_COLS;
-        world.num_tilmap_rows = NUM_TILEMAP_ROWS;
+        world.num_tilemap_rows = NUM_TILEMAP_ROWS;
         world.num_world_cols = NUM_WORLD_COLS;
         world.num_world_rows = NUM_WORLD_ROWS;
 
-        world.tile_width = 60;
-        world.tile_height = 60;
+        world.tile_side_in_meters = 1.4f; // @Note Avg 10yo child height.
+        world.tile_side_in_pixels = 60;
+        world.meters_to_pixels = (real32)world.tile_side_in_pixels/world.tile_side_in_meters;
 
         world.upper_left_x = -30.0f;
         world.upper_left_y =   0.0f;
 
-        tilemaps[0].tiles = (u32*)tiles_0;  
+        tilemaps[0].tiles = (u32*)tiles_0;
         tilemaps[1].tiles = (u32*)tiles_1;
         tilemaps[2].tiles = (u32*)tiles_2;
         tilemaps[3].tiles = (u32*)tiles_3;
@@ -269,29 +209,35 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
     if (!memory->is_initialized) {
         memory->is_initialized = true;
         { // @Note Setup hero game state.
-            global_game_state->tilemap_x = 0;
-            global_game_state->tilemap_y = 0;
+            Canonical_Position* hero = &global_game_state->hero_position;
+            hero->tilemap_x = 0;
+            hero->tilemap_y = 0;
+            
+            hero->tile_x = 3;
+            hero->tile_y = 3;
 
-            // global_game_state->hero_x = 800;
-            // global_game_state->hero_y = 210;
-            global_game_state->hero_x = 240;
-            global_game_state->hero_y = 400;
+            hero->offset_x = 0.0f;
+            hero->offset_y = 0.0f;
         }
     }
 
     // Pinkish Debug BG
     Draw_Rectangle(back_buffer, 0.0f, (real32)back_buffer->width, 0.0f, (real32)back_buffer->height, 1.0, 0.0, 1.0f);
 
-    Tilemap* tilemap = get_tilemap(&world, global_game_state->tilemap_x, global_game_state->tilemap_y);
+    Tilemap* tilemap = get_tilemap(&world, global_game_state->hero_position.tilemap_x, global_game_state->hero_position.tilemap_y);
     { // @Note Draw tilemap
-        for (s32 row = 0; row < world.num_tilmap_rows; row++) {
+        for (s32 row = 0; row < world.num_tilemap_rows; row++) {
             for (s32 col = 0; col < world.num_tilemap_cols; col++) {
                 real32 greyish = (get_tilemap_value(&world, tilemap, col, row) == 1) ? 1.0f : 0.5f;
                 
-                real32 l = world.upper_left_x + ((real32)col * world.tile_width);
-                real32 r = l + world.tile_width;
-                real32 b = world.upper_left_y + ((real32)row * world.tile_height);
-                real32 t = b + world.tile_height;
+                if (row == global_game_state->hero_position.tile_y && col == global_game_state->hero_position.tile_x) { // @Note Debug draw hero's tile
+                    greyish = 0.0f;
+                }
+
+                real32 l = world.upper_left_x + ((real32)col * world.tile_side_in_pixels);
+                real32 r = l + world.tile_side_in_pixels;
+                real32 b = world.upper_left_y + ((real32)row * world.tile_side_in_pixels);
+                real32 t = b + world.tile_side_in_pixels;
 
                 Draw_Rectangle(back_buffer, l, r, b, t, greyish, greyish, greyish);
             }
@@ -300,11 +246,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
 
     { // @Note Draw hero.
         real32 R = 1.0f, G = 0.0f, B = 0.0f;
-        real32 hero_x = global_game_state->hero_x;
-        real32 hero_y = global_game_state->hero_y;
+        Canonical_Position hero_position = global_game_state->hero_position;
+
+        real32 hero_x = world.upper_left_x + hero_position.tile_x * world.tile_side_in_pixels + hero_position.offset_x * world.meters_to_pixels;
+        real32 hero_y = world.upper_left_y + hero_position.tile_y * world.tile_side_in_pixels + hero_position.offset_y * world.meters_to_pixels;
         
-        real32 hero_width = 0.75f * world.tile_width;
-        real32 hero_height = world.tile_height;
+        real32 hero_width = 0.75f * (real32)world.tile_side_in_pixels;
+        real32 hero_height = (real32)world.tile_side_in_pixels;
         
         real32 l = hero_x - 0.5f * hero_width;
         real32 r = hero_x + 0.5f * hero_width;

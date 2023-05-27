@@ -126,7 +126,7 @@ struct Tilemap {
 
 struct World {
     s32 num_tilemap_cols;
-    s32 num_tilmap_rows;
+    s32 num_tilemap_rows;
 
     s32 num_world_cols;
     s32 num_world_rows;
@@ -134,20 +134,12 @@ struct World {
     real32 upper_left_x;
     real32 upper_left_y;
 
-    real32 tile_width;
-    real32 tile_height;
+    real32 tile_side_in_meters;
+    u32 tile_side_in_pixels;
+    real32 meters_to_pixels;
 
     Tilemap* tilemaps;
 };
-
-struct Game_State {
-    Tilemap tilemaps[2];
-    // Hero info...?
-    s32 tilemap_x;
-    s32 tilemap_y;
-    real32 hero_x;
-    real32  hero_y;
- };
 
 struct Canonical_Position {
     s32 tilemap_x;
@@ -160,14 +152,9 @@ struct Canonical_Position {
     real32 offset_y; 
 };
 
-struct Raw_Position {
-    s32 tilemap_x;
-    s32 tilemap_y;
-
-    // Screen related pos.
-    real32 x;
-    real32 y;
-};
+struct Game_State {
+    Canonical_Position hero_position;
+ };
 
 struct Game_Memory {
     // @note Required to be cleared as 0 at startup
