@@ -131,8 +131,8 @@ struct World {
     s32 num_world_cols;
     s32 num_world_rows;
 
-    real32 upper_left_x;
-    real32 upper_left_y;
+    real32 lower_left_x;
+    real32 lower_left_y;
 
     real32 tile_side_in_meters;
     u32 tile_side_in_pixels;
@@ -141,7 +141,7 @@ struct World {
     Tilemap* tilemaps;
 };
 
-struct Canonical_Position {
+struct World_Position {
     s32 tilemap_x;
     s32 tilemap_y;
     s32 tile_x;
@@ -153,7 +153,7 @@ struct Canonical_Position {
 };
 
 struct Game_State {
-    Canonical_Position hero_position;
+    World_Position hero_position;
  };
 
 struct Game_Memory {

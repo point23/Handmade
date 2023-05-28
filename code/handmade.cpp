@@ -26,7 +26,7 @@ void canonicalize_coord(World* world, s32 tilemap_count, s32 tile_count, s32* ti
     }
 }
 
-void canonicalize_position(World* world, Canonical_Position* pos) {
+void canonicalize_position(World* world, World_Position* pos) {
     canonicalize_coord(world, world->num_world_cols, world->num_tilemap_cols, &pos->tilemap_x, &pos->tile_x, &pos->offset_x);
     canonicalize_coord(world, world->num_world_rows, world->num_tilemap_rows, &pos->tilemap_y, &pos->tile_y, &pos->offset_y);
 }
@@ -44,7 +44,7 @@ Tilemap* get_tilemap(World* world, s32 tilemap_x, s32 tilemap_y) {
     return tilemap;
 }
 
-bool is_world_point_empty(World* world, Canonical_Position pos) {
+bool is_world_point_empty(World* world, World_Position pos) {
     Tilemap* tilemap = get_tilemap(world, pos.tilemap_x, pos.tilemap_y);
 
     if (!tilemap) return false;
@@ -65,24 +65,24 @@ internal void Handle_Game_Input(Game_Input *input, World* world) {
     for (s32 i = 0; i < 5; i++) {
         Game_Controller_Input controller = input->controllers[i];
         real32 dx = 0.0f, dy = 0.0f;
-        if (controller.move_down.ended_down)  dy = 1.0f;
-        if (controller.move_up.ended_down)    dy = -1.0f;
+        if (controller.move_up.ended_down)    dy =  1.0f;
+        if (controller.move_down.ended_down)  dy = -1.0f;
+        if (controller.move_right.ended_down) dx =  1.0f;
         if (controller.move_left.ended_down)  dx = -1.0f;
-        if (controller.move_right.ended_down) dx = 1.0f;
 
         real32 dt = input->dt_per_frame;
         dt *= 5.0f; // @Note Speed.
 
-        Canonical_Position new_center = global_game_state->hero_position;
+        World_Position new_center = global_game_state->hero_position;
         new_center.offset_x += dt * dx;
         new_center.offset_y += dt * dy;
 
         real32 player_width = 0.75f * world->tile_side_in_meters; // @Todo Extract it somewhere.
 
-        Canonical_Position new_left = new_center;
+        World_Position new_left = new_center;
         new_left.offset_x -= 0.5f * player_width;
         
-        Canonical_Position new_right = new_center;
+        World_Position new_right = new_center;
         new_right.offset_x += 0.5f * player_width;
 
         canonicalize_position(world, &new_center);
@@ -196,8 +196,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
         world.tile_side_in_pixels = 60;
         world.meters_to_pixels = (real32)world.tile_side_in_pixels/world.tile_side_in_meters;
 
-        world.upper_left_x = -30.0f;
-        world.upper_left_y =   0.0f;
+        // @Note lower left x/y are measured in pixels.
+        world.lower_left_x = -30.0f;
+        world.lower_left_y = (real32)back_buffer->height;
 
         tilemaps[0].tiles = (u32*)tiles_0;
         tilemaps[1].tiles = (u32*)tiles_1;
@@ -209,7 +210,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
     if (!memory->is_initialized) {
         memory->is_initialized = true;
         { // @Note Setup hero game state.
-            Canonical_Position* hero = &global_game_state->hero_position;
+            World_Position* hero = &global_game_state->hero_position;
             hero->tilemap_x = 0;
             hero->tilemap_y = 0;
             
@@ -230,14 +231,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
             for (s32 col = 0; col < world.num_tilemap_cols; col++) {
                 real32 greyish = (get_tilemap_value(&world, tilemap, col, row) == 1) ? 1.0f : 0.5f;
                 
-                if (row == global_game_state->hero_position.tile_y && col == global_game_state->hero_position.tile_x) { // @Note Debug draw hero's tile
+                if (row == global_game_state->hero_position.tile_y && col == global_game_state->hero_position.tile_x) {
+                    // @Note Debug draw hero's tile
                     greyish = 0.0f;
                 }
 
-                real32 l = world.upper_left_x + ((real32)col * world.tile_side_in_pixels);
+                real32 l = world.lower_left_x + ((real32)col * world.tile_side_in_pixels);
                 real32 r = l + world.tile_side_in_pixels;
-                real32 b = world.upper_left_y + ((real32)row * world.tile_side_in_pixels);
-                real32 t = b + world.tile_side_in_pixels;
+                real32 t = world.lower_left_y - ((real32)row * world.tile_side_in_pixels);
+                real32 b = t - world.tile_side_in_pixels;
 
                 Draw_Rectangle(back_buffer, l, r, b, t, greyish, greyish, greyish);
             }
@@ -246,10 +248,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
 
     { // @Note Draw hero.
         real32 R = 1.0f, G = 0.0f, B = 0.0f;
-        Canonical_Position hero_position = global_game_state->hero_position;
+        World_Position hero_position = global_game_state->hero_position;
 
-        real32 hero_x = world.upper_left_x + hero_position.tile_x * world.tile_side_in_pixels + hero_position.offset_x * world.meters_to_pixels;
-        real32 hero_y = world.upper_left_y + hero_position.tile_y * world.tile_side_in_pixels + hero_position.offset_y * world.meters_to_pixels;
+        real32 hero_x = world.lower_left_x + (hero_position.tile_x * world.tile_side_in_pixels + hero_position.offset_x * world.meters_to_pixels);
+        real32 hero_y = world.lower_left_y - (hero_position.tile_y * world.tile_side_in_pixels + hero_position.offset_y * world.meters_to_pixels);
         
         real32 hero_width = 0.75f * (real32)world.tile_side_in_pixels;
         real32 hero_height = (real32)world.tile_side_in_pixels;
