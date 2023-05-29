@@ -120,16 +120,21 @@ struct Game_Clocks {
     real32 seconds_elapsed;
 };
 
-struct Tilemap {
+struct Tile_Chunk {
     u32* tiles;
 };
 
 struct World {
-    s32 num_tilemap_cols;
-    s32 num_tilemap_rows;
+    u32 chunk_shift;
+    u32 chunk_mask;
 
-    s32 num_world_cols;
-    s32 num_world_rows;
+    u32 num_tilemap_cols;
+    u32 num_tilemap_rows;
+
+    u32 num_world_cols;
+    u32 num_world_rows;
+
+    u32 chunk_dim;
 
     real32 lower_left_x;
     real32 lower_left_y;
@@ -138,14 +143,21 @@ struct World {
     u32 tile_side_in_pixels;
     real32 meters_to_pixels;
 
-    Tilemap* tilemaps;
+    Tile_Chunk* tile_chunk;
+};
+
+//@Todo Rename it to Tile_Chunk_Position?
+struct Tile_Position {
+    u32 chunk_x;
+    u32 chunk_y;
+
+    u32 tile_x;
+    u32 tile_y;
 };
 
 struct World_Position {
-    s32 tilemap_x;
-    s32 tilemap_y;
-    s32 tile_x;
-    s32 tile_y;
+    u32 x;
+    u32 y;
 
     // Tile related pos.
     real32 offset_x;
