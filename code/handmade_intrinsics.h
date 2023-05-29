@@ -18,12 +18,12 @@ s32 floor_real32_to_s32(real32 val) {
 }
 
 u32 round_real32_to_u32(real32 val) {
-    u32 res = (u32)(val + 0.5f);
+    u32 res = (u32)roundf(val);
     return res;
 }
 
 s32 round_real32_to_s32(real32 val) {
-    s32 res = (s32)(val + 0.5f);
+    s32 res = (s32)roundf(val);
     return res;
 }
 

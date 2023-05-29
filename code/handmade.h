@@ -18,8 +18,7 @@
   0 - Not slow code allowed
   1 - Slow code welcome
  */
-
-#include <math.h>
+#include "math.h"
 
 // ==== Type extends ====
 #define internal static
@@ -51,7 +50,7 @@
 #define giga_bytes(size) (mega_bytes(size) * 1024)
 #define tera_bytes(size) (giga_bytes(size) * 1024)
 
-// ===== Assertion ====
+// ===== Assertions ====
 #if HANDMADE_SLOW
 #define assert(expr)                                                           \
     if (!(expr)) {                                                             \
@@ -60,6 +59,12 @@
 #else
 #define assert(expr)
 #endif
+
+// ==== Functions ==== 
+u32 safe_truncate_u64(u64 value) {
+    assert(value <= 0xFFFFFFFF); // @todo max_val_of(pod)
+    return (u32)value;
+}
 
 // ==== Structs ====
 struct Game_Back_Buffer {
@@ -120,52 +125,21 @@ struct Game_Clocks {
     real32 seconds_elapsed;
 };
 
-struct Tile_Chunk {
-    u32* tiles;
-};
-
+#include "handmade_tile.h"
 struct World {
-    u32 chunk_shift;
-    u32 chunk_mask;
-
-    u32 num_tilemap_cols;
-    u32 num_tilemap_rows;
-
-    u32 num_world_cols;
-    u32 num_world_rows;
-
-    u32 chunk_dim;
-
-    real32 lower_left_x;
-    real32 lower_left_y;
-
-    real32 tile_side_in_meters;
-    u32 tile_side_in_pixels;
-    real32 meters_to_pixels;
-
-    Tile_Chunk* tile_chunk;
+    Tilemap* tilemap;
 };
 
-//@Todo Rename it to Tile_Chunk_Position?
-struct Tile_Position {
-    u32 chunk_x;
-    u32 chunk_y;
-
-    u32 tile_x;
-    u32 tile_y;
-};
-
-struct World_Position {
-    u32 x;
-    u32 y;
-
-    // Tile related pos.
-    real32 offset_x;
-    real32 offset_y; 
+struct Memory_Arena {
+    u64 size;
+    u64 used;
+    u8* base;
 };
 
 struct Game_State {
-    World_Position hero_position;
+    World* world;
+    Memory_Arena memory_arena;
+    Tilemap_Position hero_position;
  };
 
 struct Game_Memory {
@@ -176,12 +150,6 @@ struct Game_Memory {
     void* transient_storage;
     bool is_initialized;
 };
-
-// ==== Functions ====
-u32 safe_truncate_u64(u64 value) {
-    assert(value <= 0xFFFFFFFF); // @todo max_val_of(pod)
-    return (u32)value;
-}
 
 // @Note GUAR
 #define GAME_UPDATE_AND_RENDER(name)                                           \
