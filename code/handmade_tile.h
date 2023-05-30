@@ -41,9 +41,6 @@ struct Tilemap {
     real32 lower_left_y;
 
     real32 tile_side_in_meters;
-    u32 tile_side_in_pixels;
-    real32 meters_to_pixels;
-
     Tile_Chunk* tile_chunks;
 };
 

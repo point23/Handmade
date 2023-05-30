@@ -130,17 +130,34 @@ struct World {
     Tilemap* tilemap;
 };
 
+// ===== Game Memory 'Stack' = ====
 struct Memory_Arena {
     u64 size;
     u64 used;
     u8* base;
 };
 
+#define PUSH_STRUCT(arena, type) (type*) Push_(arena, sizeof(type))
+#define PUSH_ARRAY(arena, count, type) (type*) Push_(arena, (count * sizeof(type)))
+void* Push_(Memory_Arena* arena, u64 size) {
+    assert(arena->used + size <= arena->size);
+
+    u8* result = arena->base + arena->used;
+    arena->used += size;
+    return (void*)result;
+}
+
+internal void Init_Memory_Arena(Memory_Arena* arena, u64 size, u8* base) {
+    arena->size = size;
+    arena->used = 0;
+    arena->base = base;
+}
+
 struct Game_State {
     World* world;
     Memory_Arena memory_arena;
     Tilemap_Position hero_position;
- };
+};
 
 struct Game_Memory {
     // @note Required to be cleared as 0 at startup
