@@ -6,6 +6,7 @@ struct Tilemap_Position {
     // The low 8 bits are the tile position in the chunk.
     u32 x;
     u32 y;
+    u32 z;
 
     // Tile related pos.
     real32 offset_x;
@@ -16,6 +17,7 @@ struct Tilemap_Position {
 struct Raw_Chunk_Position {
     u32 chunk_x;
     u32 chunk_y;
+    u32 chunk_z;
 
     u32 tile_x;
     u32 tile_y;
@@ -28,19 +30,13 @@ struct Tile_Chunk {
 struct Tilemap {
     u32 chunk_shift;
     u32 chunk_mask;
-
-    u32 num_tilemap_cols;
-    u32 num_tilemap_rows;
-
-    u32 num_world_cols;
-    u32 num_world_rows;
-
+    real32 tile_side_in_meters;
     u32 chunk_dim;
 
-    real32 lower_left_x;
-    real32 lower_left_y;
+    u32 count_x;
+    u32 count_y;
+    u32 count_z;
 
-    real32 tile_side_in_meters;
     Tile_Chunk* tile_chunks;
 };
 
