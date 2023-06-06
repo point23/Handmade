@@ -24,10 +24,14 @@ set common-compile-flags=^
 
 set common-link-flags=-incremental:no -opt:ref user32.lib Gdi32.lib winmm.lib
 
+echo WAITING FOR PDB > lock.tmp
+
 cl %common-compile-flags% ^
 ..\code\handmade.cpp ^
 /Fmhandmade.map ^
-/LD /link /EXPORT:Game_Update_And_Render /EXPORT:Get_Sound_Samples -PDB:handmade_pdb_%random%.pdb
+/LD /link -incremental:no -opt:ref -PDB:handmade_pdb_%random%.pdb /EXPORT:Game_Update_And_Render /EXPORT:Get_Sound_Samples
+
+del lock.tmp
 
 cl %common-compile-flags% ^
 ..\code\win32_handmade.cpp ^

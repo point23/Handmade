@@ -36,5 +36,26 @@ s32 clamp_s32(s32 val, s32 min, s32 max) {
     return val;
 }
 
+struct Bit_Scan_Result {
+    bool found;
+    u32 index;
+};
+
+inline Bit_Scan_Result bit_scan_forward(u32 value) {
+    Bit_Scan_Result result = {};
+
+#if COMPILER_MSVC
+    result.found = _BitScanForward((unsigned long*)&result.index, value);
+#else
+    for (u32 test = 0; test < 32; test++) {
+        if ((value & (1 << test)) == 1) {
+            result.found = true;
+            result.index = test;
+        }
+    }
+#endif
+    return result;
+}
+
 #define HANDMADE_INTRINSICS_H
 #endif 

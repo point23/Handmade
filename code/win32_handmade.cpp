@@ -54,7 +54,7 @@ internal void Win32_Debug_Log(LPCSTR info) {
     OutputDebugStringA("\n");
 }
 
-DEBUG_PLATFORM_FREE(Win32_Free) {
+DEBUG_PLATFORM_FREE_FILE(Win32_Free_File) {
     if (memory == NULL)
         return;
     VirtualFree(memory, 0, MEM_RELEASE);
@@ -64,14 +64,14 @@ DEBUG_PLATFORM_FREE(Win32_Free) {
 // Use case:
 //     char* filename = "";
 //     File_Result res = {};
-//     Win32_Get(filename, res);
+//     Win32_Read_File(filename, res);
 //     if (res.content_size != 0) {
-//         Win32_Put("test.cpp", res.content_size, res.content);
+//         Win32_Write_File("test.cpp", res.content_size, res.content);
 //     } else {
 //         // Logging
 //     }
 //
-DEBUG_PLATFORM_GET(Win32_Get) {
+DEBUG_PLATFORM_READ_FILE(Win32_Read_File) {
     void *result = 0;
     HANDLE file_handle = CreateFileA(filename,
                                      GENERIC_READ,    // Access mode
@@ -94,7 +94,7 @@ DEBUG_PLATFORM_GET(Win32_Get) {
                 dest->content_size = bytes_read;
                 // Logging succeed
             } else {
-                Win32_Free(result);
+                Win32_Free_File(thread, result);
                 result = 0;
             }
         }
@@ -104,7 +104,7 @@ DEBUG_PLATFORM_GET(Win32_Get) {
     dest->content = result;
 }
 
-DEBUG_PLATFORM_PUT(Win32_Put) {
+DEBUG_PLATFORM_WRITE_FILE(Win32_Write_File) {
     bool result = false;
     HANDLE file_handle = CreateFileA(filename,
                                      GENERIC_WRITE, // Access mode
@@ -384,8 +384,8 @@ internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width, s32 
     // buffers for some reason.
 
     // Clear the old buffer.
-    if (buffer->bitmap)
-        VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
+    if (buffer->memory)
+        VirtualFree(buffer->memory, 0, MEM_RELEASE);
 
     buffer->width = width;
     buffer->height = height;
@@ -395,15 +395,16 @@ internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width, s32 
     BITMAPINFOHEADER &bmiHeader = buffer->bmi.bmiHeader;
     bmiHeader.biSize = sizeof(bmiHeader);
     bmiHeader.biWidth = buffer->width;
-    // Neg height means Top-Down DIB with origin at upper-left
-    bmiHeader.biHeight = -buffer->height;
+    // Neg height means Top-Down DIB with origin at upper-left,
+    // While Positive height means bottom-left as origin point.
+    bmiHeader.biHeight = buffer->height;
     // This value must be set to 1.
     bmiHeader.biPlanes = 1;
     bmiHeader.biBitCount = (u16)(buffer->bytes_per_pixel * 8);
     bmiHeader.biCompression = BI_RGB;
 
     u32 memory_size = buffer->width * buffer->height * buffer->bytes_per_pixel;
-    buffer->bitmap =
+    buffer->memory =
         VirtualAlloc(0, memory_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     buffer->pitch = buffer->width * buffer->bytes_per_pixel;
 }
@@ -423,7 +424,7 @@ internal void Win32_Copy_Buffer_To_Window(HDC dc, Win32_Back_Buffer *buffer,
     StretchDIBits(dc, 
                   upper_left_x, upper_left_y, buffer->width, buffer->height, // Dest rectangle
                   0, 0, buffer->width, buffer->height,                       // Source rectangle
-                  buffer->bitmap,                                            // Source bitmap
+                  buffer->memory,                                            // Source bitmap
                   &buffer->bmi,                                              // Dest bitmap
                   DIB_RGB_COLORS, SRCCOPY);
 }
@@ -714,6 +715,9 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     Game_Input *new_input = &inputs[1];
     new_input->dt_per_frame = target_seconds_per_frame;
 
+    // init thread context
+     Thread_Context thread = {};
+
     // Allocate game memory
 #if HANDMADE_INTERNAL
     LPVOID base_addr = (LPVOID)tera_bytes((u64)2);
@@ -724,18 +728,18 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     Game_Memory game_memory = {};
     { // Init game memory
         game_memory.is_initialized = false;
-        game_memory.permanent_storage_size =
-            mega_bytes(64); // @todo Config this value
-        game_memory.transient_storage_size =
-            giga_bytes((u64)1); // @todo Config this value
-        u64 total_size = game_memory.permanent_storage_size +
-                         game_memory.transient_storage_size;
-        game_memory.permanent_storage = (u64 *)VirtualAlloc(
-            0, (u32)total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        game_memory.transient_storage = (u8 *)game_memory.permanent_storage +
-                                        game_memory.permanent_storage_size;
+        game_memory.permanent_storage_size = mega_bytes(64); // @Todo Config
+        game_memory.transient_storage_size = giga_bytes((u64)1); // @Todo Config
+        u64 total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
+        game_memory.permanent_storage = (u64 *)VirtualAlloc(0, (u32)total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        game_memory.transient_storage = (u8 *)game_memory.permanent_storage + game_memory.permanent_storage_size;
+
         assert(game_memory.permanent_storage != NULL);
         assert(game_memory.transient_storage != NULL);
+
+        game_memory.Debug_Platform_Free_File = Win32_Free_File;
+        game_memory.Debug_Platform_Read_File = Win32_Read_File;
+        game_memory.Debug_Platform_Write_File = Win32_Write_File;
     }
 
     win32_state state = {};
@@ -1022,7 +1026,7 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
         }
 
         Game_Back_Buffer back_buffer = {};
-        back_buffer.bitmap = global_back_buffer.bitmap;
+        back_buffer.memory = global_back_buffer.memory;
         back_buffer.width = global_back_buffer.width;
         back_buffer.height = global_back_buffer.height;
         back_buffer.pitch = global_back_buffer.pitch;
@@ -1034,8 +1038,8 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
         sound_buffer.sample_count =
             bytes_to_write / sound_output.bytes_per_sample;
 
-        game.Update_And_Render(&game_memory, &back_buffer, new_input);
-        game.Get_Sound_Samples(&sound_buffer);
+        game.Update_And_Render(&thread, &game_memory, &back_buffer, new_input);
+        game.Get_Sound_Samples(&thread, &sound_buffer);
 
         { // Render to screen
             HDC dc = GetDC(window);

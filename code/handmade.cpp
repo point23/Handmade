@@ -1,5 +1,4 @@
 #include "handmade.h"
-#include "handmade_intrinsics.h"
 #include "handmade_tile.h"
 #include "handmade_tile.cpp"
 #include "handmade_random.h"
@@ -13,16 +12,158 @@
 // @Note We shouldn't setup the game world by something global since we are unloading and loading this lib quite often...
 global Game_State *global_game_state;
 
+#pragma pack(push, 1)
+// @Note Bitmap storage: https://learn.microsoft.com/en-us/windows/win32/gdi/bitmap-storage
+struct Bitmap_Header {
+    // @Note Bitmap file header: https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapfileheader
+    u16 file_type;
+    u32 file_size;
+    u16 reserved1;
+    u16 reserved2;
+    u32 bitmap_offset;
+    // @Note Bitmap info header(V4): https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapv4header
+    u32 size;
+    s32 width;
+    s32 height;
+    u16 planes;
+    u16 bits_per_pixel;
+    u32 compression;
+    u32 size_image;
+    u32 horizontal_resolution; // In pixels-per-meter
+    u32 vertical_resolution;   // In pixles-per-meter
+    u32 colors_used;
+    u32 colors_important;
+    u32 red_mask;
+    u32 green_mask;
+    u32 blue_mask;
+    u32 alpha_mask;
+};
+#pragma pack(pop)
+
+inline u8 process_pixel_with_mask(u32 pixel, u32 mask) {
+    Bit_Scan_Result result = bit_scan_forward(mask);
+    return (u8)(pixel >> result.index);
+}
+
+internal Loaded_Bitmap Load_BMP(Thread_Context* thread, debug_platform_read_file* Read_File, char* filename) {
+    Loaded_Bitmap result = {};
+
+    File_Result read_result = {};
+    Read_File(thread, filename, &read_result);
+
+    if (read_result.content) {
+        Bitmap_Header* header = (Bitmap_Header*)read_result.content;
+
+        result.width = header->width;
+        result.height = header->height;
+
+        assert(header->compression == 3);
+
+        result.pixels = (u32*)((u8*)read_result.content + header->bitmap_offset);
+
+        // @Note Restructure pixels, expected order: 0xAARRGGBB
+        u32* pixel = result.pixels;
+        for (s32 y = 0; y < header->height; y++) {
+            for (s32 x = 0; x < header->width; x++) {
+                u8 A = process_pixel_with_mask(*pixel, header->alpha_mask);
+                u8 R = process_pixel_with_mask(*pixel, header->red_mask);
+                u8 G = process_pixel_with_mask(*pixel, header->green_mask);
+                u8 B = process_pixel_with_mask(*pixel, header->blue_mask);
+
+                *pixel = (A << 24 | R << 16 | G << 8 | B);
+                *pixel++;
+            }
+        }
+    }
+
+    return result;
+}
+
+internal void Draw_Bitmap(Game_Back_Buffer* buffer, Loaded_Bitmap bitmap, real32 upper_left_x, real32 upper_left_y) {
+    s32 l = round_real32_to_s32(upper_left_x);
+    s32 r = l + bitmap.width;
+    s32 b = round_real32_to_s32(upper_left_y);
+    s32 t = b + bitmap.height;
+
+    s32 clip_x = 0;
+    s32 clip_y = 0;
+
+    if (l < 0) {
+        clip_x = -l;
+        l = 0;
+    }
+
+    if (b < 0) {
+        clip_y = -b;
+        b = 0;
+    }
+
+    if (r > buffer->width) r = buffer->width;
+    if (t > buffer->height) t = buffer->height;
+
+    // @Note Begin at Upper-Left.
+    u32* source_row = bitmap.pixels + bitmap.width * clip_y + clip_x;
+    u32* dest_row = (u32*)buffer->memory + b * buffer->width + l;
+
+    for (s32 y = b; y < t; y++) {
+        u32* source = source_row;
+        u32* dest = dest_row;
+
+        for (s32 x = l; x < r; x++) {
+            // @Note Why can't we also use a mask here?
+            real32 SA = (real32)((*source >> 24) & 0xff);
+            real32 SR = (real32)((*source >> 16) & 0xff);
+            real32 SG = (real32)((*source >>  8) & 0xff);
+            real32 SB = (real32)((*source >>  0) & 0xff);
+
+            real32 DR = (real32)((*dest >> 16) & 0xff);
+            real32 DG = (real32)((*dest >>  8) & 0xff);
+            real32 DB = (real32)((*dest >>  0) & 0xff);
+
+            if (SA > 128) {
+                real32 ratio = SA / 255.0f;
+
+                u32 R = (u32)((1 - ratio) * DR + ratio * SR + 0.5f);
+                u32 G = (u32)((1 - ratio) * DG + ratio * SG + 0.5f);
+                u32 B = (u32)((1 - ratio) * DB + ratio * SB + 0.5f);
+
+                *dest = R << 16 | G << 8 | B;
+            }
+
+            dest++;
+            source++;
+        }
+
+        source_row += bitmap.width;
+        dest_row += buffer->width;
+    }
+}
+
 internal void Output_Sound(Game_Sound_Buffer *buffer) {}
 
 internal void Handle_Game_Input(Game_Input *input) {
     for (s32 i = 0; i < 5; i++) {
         Game_Controller_Input controller = input->controllers[i];
         real32 dx = 0.0f, dy = 0.0f;
-        if (controller.move_up.ended_down)    dy =  1.0f;
-        if (controller.move_down.ended_down)  dy = -1.0f;
-        if (controller.move_right.ended_down) dx =  1.0f;
-        if (controller.move_left.ended_down)  dx = -1.0f;
+        if (controller.move_up.ended_down) {
+            global_game_state->hero_orientation = 2;
+            dy =  1.0f;
+        }
+        
+        if (controller.move_down.ended_down) {
+            global_game_state->hero_orientation = 0;
+            dy = -1.0f;
+        }
+
+        if (controller.move_right.ended_down) {
+            global_game_state->hero_orientation = 3;
+            dx =  1.0f;
+        }
+        
+        if (controller.move_left.ended_down) {
+            global_game_state->hero_orientation = 1;
+            dx = -1.0f;
+        }
 
         real32 dt = input->dt_per_frame;
         real32 speed = 5.0f;
@@ -51,12 +192,35 @@ internal void Handle_Game_Input(Game_Input *input) {
             && is_point_empty(tilemap, &new_right)) {
             if (!same_position(global_game_state->hero_position, new_center)) {
                 u32 value = get_tile_value(tilemap, new_center.x, new_center.y, new_center.z);
+                
                 if (value == 3) {
                     new_center.z = 1 - new_center.z;  // @Temporary
                 }
             }
 
+            Tilemap_Position* camera_pos = &global_game_state->camera_position;
+
             global_game_state->hero_position = new_center;
+            camera_pos->z = new_center.z;
+
+            real32 delta_x = tilemap->tile_side_in_meters * ((real32)new_center.x - (real32)camera_pos->x) + (new_center.offset_x - camera_pos->offset_x);
+            real32 delta_y = tilemap->tile_side_in_meters * ((real32)new_center.y - (real32)camera_pos->y) + (new_center.offset_y - camera_pos->offset_y);
+
+            if(delta_x > ((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
+                camera_pos->x += NUM_TILEMAP_COLS;
+            }
+
+            if(delta_x < -((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
+                camera_pos->x -= NUM_TILEMAP_COLS;
+            }
+
+            if(delta_y > ((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
+                camera_pos->y += NUM_TILEMAP_ROWS;
+            }
+
+            if(delta_y < -((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
+                camera_pos->y -= NUM_TILEMAP_ROWS;
+            }
         }
     }
 }
@@ -85,7 +249,7 @@ internal void Draw_Rectangle(Game_Back_Buffer *buffer,
     u32 color = (round_real32_to_u32(R * 255.0f)) << 16
                 | (round_real32_to_u32(G * 255.0f)) << 8
                 | (round_real32_to_u32(B * 255.0f)) << 0;
-    u8 *row = (u8 *)buffer->bitmap + l * buffer->bytes_per_pixel + b * buffer->pitch;
+    u8 *row = (u8 *)buffer->memory + l * buffer->bytes_per_pixel + b * buffer->pitch;
     for (s32 y = b; y < t; y++) {
         u32 *pixel = (u32 *)row;
         for (s32 x = l; x < r; x++) {
@@ -101,6 +265,37 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
   
     if (!memory->is_initialized) {
         memory->is_initialized = true;
+        
+        global_game_state->background = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_background.bmp");
+
+        global_game_state->hero_orientation = 0;
+        Hero_Bitmap* hero_bitmap = &global_game_state->hero_bitmaps[0];
+        hero_bitmap->align_x = 72;
+        hero_bitmap->align_y = 35;
+        hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_head.bmp");
+        hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_cape.bmp");
+        hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_torso.bmp");
+        hero_bitmap++;
+
+        hero_bitmap->align_x = 72;
+        hero_bitmap->align_y = 35;
+        hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_head.bmp");
+        hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_cape.bmp");
+        hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_torso.bmp");
+        hero_bitmap++;
+
+        hero_bitmap->align_x = 72;
+        hero_bitmap->align_y = 35;
+        hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_head.bmp");
+        hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_cape.bmp");
+        hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_torso.bmp");
+        hero_bitmap++;
+        
+        hero_bitmap->align_x = 72;
+        hero_bitmap->align_y = 35;
+        hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_right_head.bmp");
+        hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_right_cape.bmp");
+        hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_right_torso.bmp");
         
         Memory_Arena* memory_arena = &global_game_state->memory_arena;
         u64 memory_used =  sizeof(Game_State);
@@ -118,6 +313,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
 
             init_pos->offset_x = 0.0f;
             init_pos->offset_y = 0.0f;
+        }
+
+        { // @Note Setup camera pos
+            global_game_state->camera_position = {};
+            global_game_state->camera_position.x = 8;
+            global_game_state->camera_position.y = 4;
+            global_game_state->camera_position.z = 0;
         }
 
         { // @Note Setup tilemap data.
@@ -252,48 +454,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
     Tilemap *tilemap = world->tilemap;
 
     // Pinkish Debug BG
-    Draw_Rectangle(back_buffer, 0.0f, (real32)back_buffer->width, 0.0f, (real32)back_buffer->height, 1.0, 0.0, 1.0f);
+    // Draw_Rectangle(back_buffer, 0.0f, (real32)back_buffer->width, 0.0f, (real32)back_buffer->height, 1.0, 0.0, 1.0f);
+    Draw_Bitmap(back_buffer, global_game_state->background, 0, 0);
 
     Tilemap_Position hero_pos = global_game_state->hero_position;
+    Tilemap_Position camera_pos = global_game_state->camera_position;
     Raw_Chunk_Position raw_hero_pos = get_raw_chunk_pos_for(tilemap, &hero_pos);
    
-    // @Note Without scrolling.
-    // { // @Note Draw world.
-    //     Tile_Chunk* tile_chunk = get_tile_chunk(tilemap, raw_hero_pos.chunk_x, raw_hero_pos.chunk_y);
-    //     for (u32 row = 0; row < tilemap->num_tilemap_rows; row++) {
-    //         for (u32 col = 0; col < tilemap->num_tilemap_cols; col++) {
-    //             real32 greyish = (get_tile_value(tilemap, tile_chunk, col, row) == 1) ? 1.0f : 0.5f;
-                
-    //             if (row == raw_hero_pos.tile_y && col == raw_hero_pos.tile_x) {
-    //                 // @Note Debug draw hero's tile
-    //                 greyish = 0.0f;
-    //             }
-
-    //             real32 l = lower_left_x + ((real32)col * tilemap->tile_side_in_pixels);
-    //             real32 r = l + tilemap->tile_side_in_pixels;
-    //             real32 t = lower_left_y - ((real32)row * tilemap->tile_side_in_pixels);
-    //             real32 b = t - tilemap->tile_side_in_pixels;
-
-    //             Draw_Rectangle(back_buffer, l, r, b, t, greyish, greyish, greyish);
-    //         }
-    //     }
-    // }
-
-    // { // @Note Draw hero.
-    //     real32 R = 1.0f, G = 0.0f, B = 0.0f;
-    //     real32 hero_x = lower_left_x + (raw_hero_pos.tile_x * tilemap->tile_side_in_pixels + global_game_state->hero_position.offset_x * tilemap->meters_to_pixels);
-    //     real32 hero_y = lower_left_y - (raw_hero_pos.tile_y * tilemap->tile_side_in_pixels + global_game_state->hero_position.offset_y * tilemap->meters_to_pixels);
-        
-    //     real32 hero_width = 0.75f * (real32)tilemap->tile_side_in_pixels;
-    //     real32 hero_height = (real32)tilemap->tile_side_in_pixels;
-        
-    //     real32 l = hero_x - 0.5f * hero_width;
-    //     real32 r = hero_x + 0.5f * hero_width;
-    //     real32 b = hero_y - 0.5f * hero_height;
-    //     real32 t = hero_y + 0.5f * hero_height;
-    //     Draw_Rectangle(back_buffer, l, r, b, t, R, G, B);
-    // }
-
     { // @Note With scrolling
         u32 tile_side_in_pixels = 60;
         real32 meters_to_pixels = (real32)tile_side_in_pixels / tilemap->tile_side_in_meters;
@@ -303,8 +470,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
         real32 screen_center_y = (real32)back_buffer->height / 2.0f;
 
         { // @Note Draw the world.
-            real32 center_tile_x = screen_center_x - hero_pos.offset_x * meters_to_pixels;
-            real32 center_tile_y = screen_center_y - hero_pos.offset_y * meters_to_pixels;
+            real32 center_tile_x = screen_center_x - camera_pos.offset_x * meters_to_pixels;
+            real32 center_tile_y = screen_center_y - camera_pos.offset_y * meters_to_pixels;
             real32 half_tile_side_in_pixels = 0.5f * tile_side_in_pixels;
 
             for (s32 dy = -10; dy < 10; dy++) {
@@ -316,23 +483,21 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
 
                     real32 l = x - half_tile_side_in_pixels;
                     real32 r = x + half_tile_side_in_pixels;
-                    real32 b = screen_height - y - half_tile_side_in_pixels;
-                    real32 t = screen_height - y + half_tile_side_in_pixels;
+                    real32 b = y - half_tile_side_in_pixels;
+                    real32 t = y + half_tile_side_in_pixels;
 
-                    u32 tile_x = dx + hero_pos.x;
-                    u32 tile_y = dy + hero_pos.y;
+                    u32 tile_x = dx + camera_pos.x;
+                    u32 tile_y = dy + camera_pos.y;
 
-                    u32 val = get_tile_value(tilemap, tile_x, tile_y, hero_pos.z);
+                    u32 val = get_tile_value(tilemap, tile_x, tile_y, camera_pos.z);
 
-                    if (val) {
-                        if (val == 1)
-                            greyish = 0.5f;
-                        else if (val == 2)
+                    if (val > 1) {
+                        if (val == 2)
                             greyish = 1.0f;
                         else if (val == 3)
                             greyish = 0.25f;
 
-                        if (tile_x == hero_pos.x && tile_y == hero_pos.y) {
+                        if (tile_x == camera_pos.x && tile_y == camera_pos.y) {
                             greyish = 0.0f;
                         }
 
@@ -343,15 +508,31 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
         }
         { // @Note Draw hero.
             real32 R = 1.0f, G = 0.0f, B = 0.0f;
-            real32 half_hero_width = 0.5f * 0.75f * (real32)tile_side_in_pixels;
+            real32 half_hero_width  = 0.5f * 0.75f * (real32)tile_side_in_pixels;
             real32 half_hero_height = 0.5f * (real32)tile_side_in_pixels;
 
-            real32 l = screen_center_x - half_hero_width; 
-            real32 r = screen_center_x + half_hero_width;
-            real32 b = screen_height - screen_center_y - half_hero_height;
-            real32 t = screen_height - screen_center_y + half_hero_height;
+            real32 delta_x = tilemap->tile_side_in_meters * ((real32)hero_pos.x - (real32)camera_pos.x) + (hero_pos.offset_x - camera_pos.offset_x);
+            real32 delta_y = tilemap->tile_side_in_meters * ((real32)hero_pos.y - (real32)camera_pos.y) + (hero_pos.offset_y - camera_pos.offset_y);
+
+            real32 hero_center_x = screen_center_x + delta_x * meters_to_pixels;
+            real32 hero_center_y = screen_center_y + delta_y * meters_to_pixels;
+
+            real32 l = hero_center_x - half_hero_width; 
+            real32 r = hero_center_x + half_hero_width;
+            real32 b = hero_center_y - half_hero_height;
+            real32 t = hero_center_y + half_hero_height;
 
             Draw_Rectangle(back_buffer, l, r, b, t, R, G, B);
+            
+            u32 orientation = global_game_state->hero_orientation;
+            Hero_Bitmap hero_bmp = global_game_state->hero_bitmaps[orientation];
+            
+            real32 bmp_x = hero_center_x - hero_bmp.align_x;
+            real32 bmp_y = hero_center_y - hero_bmp.align_y;
+
+            Draw_Bitmap(back_buffer, hero_bmp.head, bmp_x, bmp_y);
+            Draw_Bitmap(back_buffer, hero_bmp.cape, bmp_x, bmp_y);
+            Draw_Bitmap(back_buffer, hero_bmp.torso, bmp_x, bmp_y);
         }
     }
     Handle_Game_Input(input);

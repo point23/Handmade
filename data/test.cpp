@@ -38,7 +38,7 @@
 struct Win32_Back_Buffer
 {
     BITMAPINFO bmi;
-    void* bitmap;
+    void* memory;
     s32 width;
     s32 height;
     s32 bytes_per_pixel;
@@ -406,8 +406,8 @@ Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, s32 width, s32 height)
     // buffers for some reason.
 
     // Clear the old buffer.
-    if (buffer->bitmap)
-        VirtualFree(buffer->bitmap, 0, MEM_RELEASE);
+    if (buffer->memory)
+        VirtualFree(buffer->memory, 0, MEM_RELEASE);
 
     buffer->width = width;
     buffer->height = height;
@@ -425,7 +425,7 @@ Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, s32 width, s32 height)
     bmiHeader.biCompression = BI_RGB;
 
     u64 memorySize = buffer->width * buffer->height * buffer->bytes_per_pixel;
-    buffer->bitmap =
+    buffer->memory =
       VirtualAlloc(0, memorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     buffer->pitch = buffer->width * buffer->bytes_per_pixel;
 }
@@ -449,7 +449,7 @@ Win32_Copy_Buffer_To_Window(HDC deviceContext,
                   buffer->width,
                   buffer->height,
                   // Source
-                  buffer->bitmap,
+                  buffer->memory,
                   // Destination
                   &buffer->bmi,
                   DIB_RGB_COLORS,
@@ -791,7 +791,7 @@ WinMain(HINSTANCE instance,
         }
 
         Game_Back_Buffer back_buffer = {};
-        back_buffer.bitmap = Global_Back_Buffer.bitmap;
+        back_buffer.memory = Global_Back_Buffer.memory;
         back_buffer.width = Global_Back_Buffer.width;
         back_buffer.height = Global_Back_Buffer.height;
         back_buffer.pitch = Global_Back_Buffer.pitch;

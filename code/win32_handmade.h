@@ -13,7 +13,7 @@
 struct Win32_Back_Buffer
 {
     BITMAPINFO bmi;
-    void* bitmap;
+    void* memory;
     s32 width;
     s32 height;
     s32 bytes_per_pixel;
