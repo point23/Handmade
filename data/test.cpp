@@ -431,7 +431,7 @@ Win32_Resize_DIBSection(Win32_Back_Buffer* buffer, s32 width, s32 height)
 }
 
 internal void
-Win32_Copy_Buffer_To_Window(HDC deviceContext,
+Win32_Display_Buffer_In_Window(HDC deviceContext,
                             Win32_Back_Buffer* buffer,
                             s32 window_width,
                             s32 window_height)
@@ -502,7 +502,7 @@ Win32_Main_Window_Callback(HWND window,
             // Display buffer to window
             Win32_Window_Dimension dimension =
               Win32_Get_Window_Diemnsion(window);
-            Win32_Copy_Buffer_To_Window(deviceContext,
+            Win32_Display_Buffer_In_Window(deviceContext,
                                         &Global_Back_Buffer,
                                         dimension.width,
                                         dimension.height);
@@ -808,7 +808,7 @@ WinMain(HINSTANCE instance,
             HDC dc = GetDC(window);
             Win32_Window_Dimension dimension =
               Win32_Get_Window_Diemnsion(window);
-            Win32_Copy_Buffer_To_Window(
+            Win32_Display_Buffer_In_Window(
               dc, &Global_Back_Buffer, dimension.width, dimension.height);
             ReleaseDC(window, dc);
         }

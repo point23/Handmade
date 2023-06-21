@@ -44,8 +44,33 @@ global Direct_Sound_Buffer global_sound_buffer;
 // CPU counts per second
 global s64 global_perf_count_freq;
 
+global bool global_show_cursor;
+global WINDOWPLACEMENT global_window_placement = {sizeof(global_window_placement)};
+
 char SOURCE_DLL_NAME[] = "handmade.dll";
 char TEMP_DLL_NAME[] = "handmade_temp.dll";
+
+internal void Toggle_Fullscreen(HWND hwnd) {
+    DWORD window_style = GetWindowLong(hwnd, GWL_STYLE);
+    if (window_style & WS_OVERLAPPEDWINDOW) {
+        MONITORINFO mi = {sizeof(mi)};
+        if (GetWindowPlacement(hwnd, &global_window_placement) 
+            && GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &mi)) {
+                SetWindowLong(hwnd, GWL_STYLE, window_style & ~WS_OVERLAPPEDWINDOW);
+                SetWindowPos(hwnd, HWND_TOP, 
+                             mi.rcMonitor.left, mi.rcMonitor.top,
+                             mi.rcMonitor.right - mi.rcMonitor.left,
+                             mi.rcMonitor.bottom - mi.rcMonitor.top,
+                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+
+        }
+    } else {
+        SetWindowLong(hwnd, GWL_STYLE, window_style | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(hwnd, &global_window_placement);
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0, 
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
 
 // @hack Debug log for now...
 internal void Win32_Debug_Log(LPCSTR info) {
@@ -409,24 +434,46 @@ internal void Win32_Resize_DIBSection(Win32_Back_Buffer *buffer, s32 width, s32 
     buffer->pitch = buffer->width * buffer->bytes_per_pixel;
 }
 
-internal void Win32_Copy_Buffer_To_Window(HDC dc, Win32_Back_Buffer *buffer,
-                                          s32 window_width, s32 window_height) {
-    
-    s32 upper_left_x = 10, upper_left_y = 10;
-    
-    // @Note Fill in each four gutters, start from the upper gutter, anticlockwise.
-    PatBlt(dc, 0, 0, window_width, upper_left_y, BLACKNESS);
-    PatBlt(dc, 0, upper_left_y, upper_left_x, buffer->height, BLACKNESS);
-    PatBlt(dc, 0, upper_left_y + buffer->height, window_width, window_height - buffer->height - upper_left_y, BLACKNESS);
-    PatBlt(dc, upper_left_x + buffer->width, upper_left_y, window_width - upper_left_x - buffer->width, buffer->height, BLACKNESS);
+internal void Win32_Display_Buffer_In_Window(HDC hdc, Win32_Back_Buffer *buffer,
+                                             s32 window_width, s32 window_height) {
+    real32 scale_w = (real32)window_width / (real32)(buffer->width);
+    real32 scale_h = (real32)window_height / (real32)(buffer->height);
+    { // @Note Debug show window / buffer
+        char log[128];
+        sprintf_s(log, "==============%.2f, %.2f==============\n", scale_w, scale_h);
+        Win32_Debug_Log(log);
+        // So it turns out to be (1536, 864), which is not 2 times (960, 540)...
+    } 
 
-    // @Todo Aspect ratio correction is in need.
-    StretchDIBits(dc, 
-                  upper_left_x, upper_left_y, buffer->width, buffer->height, // Dest rectangle
-                  0, 0, buffer->width, buffer->height,                       // Source rectangle
-                  buffer->memory,                                            // Source bitmap
-                  &buffer->bmi,                                              // Dest bitmap
-                  DIB_RGB_COLORS, SRCCOPY);
+    real32 scale = 1.6f;
+    s32 scaled_width = (s32)(scale * (real32)buffer->width);
+    s32 scaled_height = (s32)(scale * (real32)buffer->height);
+    
+    if (scale_w >= scale && scale_h >= scale) { // @Hack
+        Win32_Debug_Log("%%%%%%%%%%%%%%%%%%%%%%%");
+        StretchDIBits(hdc, 
+                    0, 0, scaled_width, scaled_height,    // Dest rectangle
+                    0, 0, buffer->width, buffer->height,  // Source rectangle
+                    buffer->memory,                       // Source bitmap
+                    &buffer->bmi,                         // Dest bitmap
+                    DIB_RGB_COLORS, SRCCOPY);
+    } else {
+        s32 upper_left_x = 10, upper_left_y = 10;
+
+        // @Note Fill in each four gutters, start from the upper gutter, anticlockwise.
+        PatBlt(hdc, 0, 0, window_width, upper_left_y, BLACKNESS);
+        PatBlt(hdc, 0, upper_left_y, upper_left_x, buffer->height, BLACKNESS);
+        PatBlt(hdc, 0, upper_left_y + buffer->height, window_width, window_height - buffer->height - upper_left_y, BLACKNESS);
+        PatBlt(hdc, upper_left_x + buffer->width, upper_left_y, window_width - upper_left_x - buffer->width, buffer->height, BLACKNESS);
+
+        // @Todo Aspect ratio correction is in need.
+        StretchDIBits(hdc, 
+                        upper_left_x, upper_left_y, buffer->width, buffer->height, // Dest rectangle
+                        0, 0, buffer->width, buffer->height,                       // Source rectangle
+                        buffer->memory,                                            // Source bitmap
+                        &buffer->bmi,                                              // Dest bitmap
+                        DIB_RGB_COLORS, SRCCOPY);
+    }
 }
 
 internal void Win32_Process_XInput_Digital_Button(Game_Button_State *s_old,
@@ -480,6 +527,17 @@ Win32_Process_Pending_Messages(Game_Controller_Input *keyboard) {
 
             bool was_down = (l_param & (1 << 30)) != 0;
             bool is_down = (l_param & (1 << 31)) == 0;
+            
+            if (is_down) {
+                bool alt_down = l_param & (1 << 29);
+                if (vk_code == VK_F4 && alt_down) {
+                    global_running = false;
+                }
+
+                if (vk_code == VK_RETURN && alt_down) {
+                    Toggle_Fullscreen(message.hwnd);
+                }
+            }
 
             if (was_down == is_down) break; // @Note Only handle it when btn state changed
 
@@ -503,11 +561,6 @@ Win32_Process_Pending_Messages(Game_Controller_Input *keyboard) {
             } else if (vk_code == VK_SPACE) {
             }
 
-            // @Fixme There might be a waste of time trans s32 to bool.
-            bool alt_down = l_param & (1 << 29);
-            if (vk_code == VK_F4 && alt_down) {
-                global_running = false;
-            }
          } break;
         default:
         {
@@ -524,6 +577,14 @@ LRESULT CALLBACK Win32_Main_Window_Callback(HWND window, UINT message,
                                             WPARAM w_param, LPARAM l_param) {
     LRESULT result = 0;
     switch (message) {
+    case WM_SETCURSOR: {
+        if (global_show_cursor) {
+            result = DefWindowProcA(window, message, w_param, l_param);
+        } else {
+            SetCursor(0);
+        }
+    } break;
+
     case WM_ACTIVATEAPP: {
         Win32_Debug_Log("Activated.");
     } break;
@@ -548,7 +609,7 @@ LRESULT CALLBACK Win32_Main_Window_Callback(HWND window, UINT message,
 
         // Display buffer to window
         Win32_Window_Dimension dimension = Win32_Get_Window_Dimension(window);
-        Win32_Copy_Buffer_To_Window(deviceContext, &global_back_buffer,
+        Win32_Display_Buffer_In_Window(deviceContext, &global_back_buffer,
                                     dimension.width, dimension.height);
 
         EndPaint(window, &paint);
@@ -674,7 +735,9 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     window_class.lpfnWndProc = Win32_Main_Window_Callback;
     window_class.hInstance = instance;
     window_class.lpszClassName = "Handmade_Window_Class";
+    window_class.hCursor = LoadCursor(0, IDC_ARROW);
     /* @todo Setup icon for this app: window_class.hIcon */
+    
     bool registered = RegisterClass(&window_class);
     assert(registered);
 
@@ -691,8 +754,7 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
     Win32_Clear_Sound_Buffer(&sound_output);
     global_sound_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
-    s16 *sound_samples = (s16 *)VirtualAlloc(
-        0, sound_output.buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    s16 *sound_samples = (s16 *)VirtualAlloc(0, sound_output.buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     assert(sound_samples);
 
     // Frame rate stuff
@@ -717,6 +779,10 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
 
     // init thread context
      Thread_Context thread = {};
+
+#if HANDMADE_INTERNAL
+    global_show_cursor = true;
+#endif
 
     // Allocate game memory
 #if HANDMADE_INTERNAL
@@ -1045,7 +1111,7 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
             HDC dc = GetDC(window);
             Win32_Window_Dimension dimension =
                 Win32_Get_Window_Dimension(window);
-            Win32_Copy_Buffer_To_Window(dc, &global_back_buffer,
+            Win32_Display_Buffer_In_Window(dc, &global_back_buffer,
                                         dimension.width, dimension.height);
             ReleaseDC(window, dc);
         }
