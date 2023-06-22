@@ -144,39 +144,46 @@ internal void Output_Sound(Game_Sound_Buffer *buffer) {}
 internal void Handle_Game_Input(Game_Input *input) {
     for (s32 i = 0; i < 5; i++) {
         Game_Controller_Input controller = input->controllers[i];
-        Vector2 position_delta = {};
-
+        
+        Vector2 acc = {};
         if (controller.move_up.ended_down) {
             global_game_state->hero_orientation = 2;
-            position_delta.y =  1.0f;
+            acc.y =  1.0f;
         }
         
         if (controller.move_down.ended_down) {
             global_game_state->hero_orientation = 0;
-            position_delta.y = -1.0f;
+            acc.y = -1.0f;
         }
 
         if (controller.move_right.ended_down) {
             global_game_state->hero_orientation = 3;
-            position_delta.x = 1.0f;
+            acc.x = 1.0f;
         }
         
         if (controller.move_left.ended_down) {
             global_game_state->hero_orientation = 1;
-            position_delta.x = -1.0f;
+            acc.x = -1.0f;
         }
 
-        if (position_delta.x != 0.0f && position_delta.y != 0.0f) {
-            position_delta *= 0.7071f;
+        if (acc.x != 0.0f && acc.y != 0.0f) { // Normalize it...
+            acc *= 0.7071f;
         }
+
+        Vector2& velocity = global_game_state->hero_velocity;
+
+        real32 speed = 5.0f;
+        if (controller.action_up.ended_down) speed = 10.0f; // @Hack
+        acc *= speed;
+        acc -= 0.75f * velocity; // @Note Friction
 
         real32 dt = input->dt_per_frame;
-        real32 speed = 5.0f;
-        if (controller.action_up.ended_down) speed = 30.0f; // @Hack
-        position_delta *= (dt * speed);
 
         Tilemap_Position new_center = global_game_state->hero_position;
-        new_center.tile_offset += position_delta;
+        // p' = (1/2 * a * t^2) + v * t + p
+        new_center.tile_offset = (0.5f * acc * square(dt)) + (velocity * dt) + new_center.tile_offset;
+        // v' = a * t + v
+        velocity += (acc * dt);
 
         Tilemap* tilemap = global_game_state->world->tilemap;
         real32 player_width = 0.75f * tilemap->tile_side_in_meters; // @Todo Extract it somewhere.

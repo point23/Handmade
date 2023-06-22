@@ -68,13 +68,13 @@ struct Hero_Bitmap {
 struct Game_State {
     World* world;
     Memory_Arena memory_arena;
-    Tilemap_Position hero_position;
     Tilemap_Position camera_position;
-
     Loaded_Bitmap background;
+    Hero_Bitmap hero_bitmaps[4];
 
     u32 hero_orientation;
-    Hero_Bitmap hero_bitmaps[4];
+    Tilemap_Position hero_position;
+    Vector2 hero_velocity;
 };
 
 #define HANDMADE_H

@@ -1,16 +1,16 @@
 #if !defined(HANDMADE_MATH_H)
 
-// ==== STRUCT ====
+/// ==== Vector2 ====
+// STRUCT
 union Vector2 {
     struct 
     {
         real32 x, y;
     };
-
     real32 elems[2];
 };
 
-// ==== PRIVATE ====
+// PRIVATE
 inline Vector2 operator-(Vector2 a) {
     Vector2 result;
     result.x = -a.x;
@@ -46,7 +46,14 @@ inline Vector2 operator*(Vector2 a, real32 scalar) {
     return result;
 }
 
-// ==== PUBLIC ====
+inline Vector2 operator*(real32 scalar, Vector2 a) {
+    Vector2 result;
+    result.x = a.x * scalar;
+    result.y = a.y * scalar;
+    return result;
+}
+
+// PUBLIC
 inline Vector2& operator+=(Vector2& v, Vector2 other) {
     v = v + other;
     return v;
@@ -60,6 +67,12 @@ inline Vector2& operator-=(Vector2& v, Vector2 o) {
 inline Vector2& operator*=(Vector2& v, real32 scalar) {
     v = v * scalar;
     return v;
+}
+
+// ==== OTHER ====
+inline real32 square(real32 value) {
+    real32 result = value * value;
+    return result;
 }
 
 #define HANDMADE_MATH_H
