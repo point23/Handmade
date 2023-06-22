@@ -7,10 +7,8 @@ struct Tilemap_Position {
     u32 x;
     u32 y;
     u32 z;
-
-    // Tile related pos.
-    real32 offset_x;
-    real32 offset_y; 
+    // Tile related offset.
+    Vector2 tile_offset;
 };
 
 //@Todo Rename it to Tile_Chunk_Position?

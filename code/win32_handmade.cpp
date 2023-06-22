@@ -50,7 +50,7 @@ global WINDOWPLACEMENT global_window_placement = {sizeof(global_window_placement
 char SOURCE_DLL_NAME[] = "handmade.dll";
 char TEMP_DLL_NAME[] = "handmade_temp.dll";
 
-internal void Toggle_Fullscreen(HWND hwnd) {
+internal void Toggle_Fullscreen(HWND hwnd) { 
     DWORD window_style = GetWindowLong(hwnd, GWL_STYLE);
     if (window_style & WS_OVERLAPPEDWINDOW) {
         MONITORINFO mi = {sizeof(mi)};
@@ -61,7 +61,7 @@ internal void Toggle_Fullscreen(HWND hwnd) {
                              mi.rcMonitor.left, mi.rcMonitor.top,
                              mi.rcMonitor.right - mi.rcMonitor.left,
                              mi.rcMonitor.bottom - mi.rcMonitor.top,
-                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                             SWP_NOOWNERZORDER | SWP_FRAMECHANGED);  
 
         }
     } else {
@@ -70,7 +70,7 @@ internal void Toggle_Fullscreen(HWND hwnd) {
         SetWindowPos(hwnd, NULL, 0, 0, 0, 0, 
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
-}
+} 
 
 // @hack Debug log for now...
 internal void Win32_Debug_Log(LPCSTR info) {

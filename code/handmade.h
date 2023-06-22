@@ -21,8 +21,9 @@
   1 - Slow code welcome
  */
 #include "math.h"
-
+#include "hanmade_math.h"
 #include "handmade_tile.h"
+
 struct World {
     Tilemap* tilemap;
 };

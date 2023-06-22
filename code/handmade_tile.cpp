@@ -8,8 +8,8 @@ void canonicalize_coord(Tilemap* tilemap, u32* coord, real32* offset) {
 }
 
 void canonicalize_position(Tilemap* tilemap, Tilemap_Position* pos) {
-    canonicalize_coord(tilemap, &pos->x, &pos->offset_x);
-    canonicalize_coord(tilemap, &pos->y, &pos->offset_y);
+    canonicalize_coord(tilemap, &pos->x, &pos->tile_offset.x);
+    canonicalize_coord(tilemap, &pos->y, &pos->tile_offset.y);
 }
 
 Tile_Chunk* get_tile_chunk(Tilemap* tilemap, u32 x, u32 y, u32 z) {

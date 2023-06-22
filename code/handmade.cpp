@@ -144,44 +144,48 @@ internal void Output_Sound(Game_Sound_Buffer *buffer) {}
 internal void Handle_Game_Input(Game_Input *input) {
     for (s32 i = 0; i < 5; i++) {
         Game_Controller_Input controller = input->controllers[i];
-        real32 dx = 0.0f, dy = 0.0f;
+        Vector2 position_delta = {};
+
         if (controller.move_up.ended_down) {
             global_game_state->hero_orientation = 2;
-            dy =  1.0f;
+            position_delta.y =  1.0f;
         }
         
         if (controller.move_down.ended_down) {
             global_game_state->hero_orientation = 0;
-            dy = -1.0f;
+            position_delta.y = -1.0f;
         }
 
         if (controller.move_right.ended_down) {
             global_game_state->hero_orientation = 3;
-            dx =  1.0f;
+            position_delta.x = 1.0f;
         }
         
         if (controller.move_left.ended_down) {
             global_game_state->hero_orientation = 1;
-            dx = -1.0f;
+            position_delta.x = -1.0f;
+        }
+
+        if (position_delta.x != 0.0f && position_delta.y != 0.0f) {
+            position_delta *= 0.7071f;
         }
 
         real32 dt = input->dt_per_frame;
         real32 speed = 5.0f;
-        if (controller.action_up.ended_down) speed = 30.0f;
-        dt *= speed;
+        if (controller.action_up.ended_down) speed = 30.0f; // @Hack
+        position_delta *= (dt * speed);
 
         Tilemap_Position new_center = global_game_state->hero_position;
-        new_center.offset_x += dt * dx;
-        new_center.offset_y += dt * dy;
+        new_center.tile_offset += position_delta;
 
         Tilemap* tilemap = global_game_state->world->tilemap;
         real32 player_width = 0.75f * tilemap->tile_side_in_meters; // @Todo Extract it somewhere.
 
         Tilemap_Position new_left = new_center;
-        new_left.offset_x -= 0.5f * player_width;
+        new_left.tile_offset.x -= 0.5f * player_width;
         
         Tilemap_Position new_right = new_center;
-        new_right.offset_x += 0.5f * player_width;
+        new_right.tile_offset.x += 0.5f * player_width;
 
         canonicalize_position(tilemap, &new_center);
         canonicalize_position(tilemap, &new_left);
@@ -203,8 +207,8 @@ internal void Handle_Game_Input(Game_Input *input) {
             global_game_state->hero_position = new_center;
             camera_pos->z = new_center.z;
 
-            real32 delta_x = tilemap->tile_side_in_meters * ((real32)new_center.x - (real32)camera_pos->x) + (new_center.offset_x - camera_pos->offset_x);
-            real32 delta_y = tilemap->tile_side_in_meters * ((real32)new_center.y - (real32)camera_pos->y) + (new_center.offset_y - camera_pos->offset_y);
+            real32 delta_x = tilemap->tile_side_in_meters * ((real32)new_center.x - (real32)camera_pos->x) + (new_center.tile_offset.x - camera_pos->tile_offset.x);
+            real32 delta_y = tilemap->tile_side_in_meters * ((real32)new_center.y - (real32)camera_pos->y) + (new_center.tile_offset.y - camera_pos->tile_offset.y);
 
             if(delta_x > ((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
                 camera_pos->x += NUM_TILEMAP_COLS;
@@ -310,9 +314,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
             init_pos->x = 3;
             init_pos->y = 3;
             init_pos->z = 0;
-
-            init_pos->offset_x = 0.0f;
-            init_pos->offset_y = 0.0f;
+            init_pos->tile_offset = {0.0f, 0.0f};
         }
 
         { // @Note Setup camera pos
@@ -466,20 +468,21 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
         real32 meters_to_pixels = (real32)tile_side_in_pixels / tilemap->tile_side_in_meters;
 
         real32 screen_height = (real32)back_buffer->height;
-        real32 screen_center_x = (real32)back_buffer->width / 2.0f;
-        real32 screen_center_y = (real32)back_buffer->height / 2.0f;
 
+        Vector2 screen_center = {(real32)back_buffer->width / 2.0f, 
+                            (real32)back_buffer->height / 2.0f };
         { // @Note Draw the world.
-            real32 center_tile_x = screen_center_x - camera_pos.offset_x * meters_to_pixels;
-            real32 center_tile_y = screen_center_y - camera_pos.offset_y * meters_to_pixels;
+            Vector2 center_tile = {screen_center.x - camera_pos.tile_offset.x * meters_to_pixels, 
+                                  screen_center.y - camera_pos.tile_offset.y * meters_to_pixels};
+
             real32 half_tile_side_in_pixels = 0.5f * tile_side_in_pixels;
 
             for (s32 dy = -10; dy < 10; dy++) {
                 for (s32 dx = -20; dx < 20; dx++) {
                     real32 greyish = 1.0f;
 
-                    real32 x = center_tile_x + (real32)dx * tile_side_in_pixels;
-                    real32 y = center_tile_y + (real32)dy * tile_side_in_pixels;
+                    real32 x = center_tile.x + (real32)dx * tile_side_in_pixels;
+                    real32 y = center_tile.y + (real32)dy * tile_side_in_pixels;
 
                     real32 l = x - half_tile_side_in_pixels;
                     real32 r = x + half_tile_side_in_pixels;
@@ -511,24 +514,24 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
             real32 half_hero_width  = 0.5f * 0.75f * (real32)tile_side_in_pixels;
             real32 half_hero_height = 0.5f * (real32)tile_side_in_pixels;
 
-            real32 delta_x = tilemap->tile_side_in_meters * ((real32)hero_pos.x - (real32)camera_pos.x) + (hero_pos.offset_x - camera_pos.offset_x);
-            real32 delta_y = tilemap->tile_side_in_meters * ((real32)hero_pos.y - (real32)camera_pos.y) + (hero_pos.offset_y - camera_pos.offset_y);
+            Vector2 delta = {tilemap->tile_side_in_meters * ((real32)hero_pos.x - (real32)camera_pos.x) + (hero_pos.tile_offset.x - camera_pos.tile_offset.x),
+                        tilemap->tile_side_in_meters * ((real32)hero_pos.y - (real32)camera_pos.y) + (hero_pos.tile_offset.y - camera_pos.tile_offset.y)};
+            delta *= meters_to_pixels;
 
-            real32 hero_center_x = screen_center_x + delta_x * meters_to_pixels;
-            real32 hero_center_y = screen_center_y + delta_y * meters_to_pixels;
+            Vector2 hero_center = screen_center + delta;
 
-            real32 l = hero_center_x - half_hero_width; 
-            real32 r = hero_center_x + half_hero_width;
-            real32 b = hero_center_y - half_hero_height;
-            real32 t = hero_center_y + half_hero_height;
+            real32 l = hero_center.x - half_hero_width; 
+            real32 r = hero_center.x + half_hero_width;
+            real32 b = hero_center.y - half_hero_height;
+            real32 t = hero_center.y + half_hero_height;
 
             Draw_Rectangle(back_buffer, l, r, b, t, R, G, B);
             
             u32 orientation = global_game_state->hero_orientation;
             Hero_Bitmap hero_bmp = global_game_state->hero_bitmaps[orientation];
             
-            real32 bmp_x = hero_center_x - hero_bmp.align_x;
-            real32 bmp_y = hero_center_y - hero_bmp.align_y;
+            real32 bmp_x = hero_center.x - hero_bmp.align_x;
+            real32 bmp_y = hero_center.y - hero_bmp.align_y;
 
             Draw_Bitmap(back_buffer, hero_bmp.head, bmp_x, bmp_y);
             Draw_Bitmap(back_buffer, hero_bmp.cape, bmp_x, bmp_y);
