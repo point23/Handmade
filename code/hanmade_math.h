@@ -69,6 +69,10 @@ inline Vector2& operator*=(Vector2& v, real32 scalar) {
     return v;
 }
 
+inline real32 dot_product(Vector2 a, Vector2 b) { // Inner Product
+    return a.x * b.x + a.y * b.y;
+}
+
 // ==== OTHER ====
 inline real32 square(real32 value) {
     real32 result = value * value;

@@ -198,9 +198,22 @@ internal void Handle_Game_Input(Game_Input *input) {
         canonicalize_position(tilemap, &new_left);
         canonicalize_position(tilemap, &new_right);
 
-        if (is_point_empty(tilemap, &new_center)
-            && is_point_empty(tilemap, &new_left)
-            && is_point_empty(tilemap, &new_right)) {
+        Tilemap_Position collide_position = new_center;
+        bool collided = false;
+        if (!is_point_empty(tilemap, &new_center)) {
+            collided = true;
+            collide_position = new_center;
+        }        
+        if (!is_point_empty(tilemap, &new_left)) {
+            collided = true;
+            collide_position = new_left;
+        }        
+        if (!is_point_empty(tilemap, &new_right)) {
+            collided = true;
+            collide_position = new_right;
+        }
+
+        if (!collided) {
             if (!same_position(global_game_state->hero_position, new_center)) {
                 u32 value = get_tile_value(tilemap, new_center.x, new_center.y, new_center.z);
                 
@@ -232,6 +245,21 @@ internal void Handle_Game_Input(Game_Input *input) {
             if(delta_y < -((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
                 camera_pos->y -= NUM_TILEMAP_ROWS;
             }
+        } else { // Bounce back.
+            Vector2 n = {0.0f, 0.0f};
+            if (collide_position.x < global_game_state->hero_position.x) {
+                n.x = 1.0f;
+            }
+            if (collide_position.x > global_game_state->hero_position.x) {
+                n.x = -1.0f;
+            }
+            if (collide_position.y < global_game_state->hero_position.y) {
+                n.y = 1.0f;
+            }
+            if (collide_position.y > global_game_state->hero_position.y) {
+                n.y = -1.0f;
+            }
+            velocity = velocity - (2 * dot_product(velocity, n) * n);
         }
     }
 }
