@@ -1,6 +1,18 @@
 #if !defined(HANDMADE_INTRINSICS_H)
 #include "math.h"
 
+real32 abs_real32(real32 value) {
+    return fabsf(value); // fabs is for double...
+}
+
+u32 rotate_left(u32 value, u32 shift) {
+    return _rotl(value, shift);
+}
+
+u32 rotate_right(u32 value, u32 shift) {
+    return _rotr(value, shift);
+}
+
 s32 wrap_s32(s32 num, s32 lower_bound, s32 upper_bound) {
     // [lower, upper)
 

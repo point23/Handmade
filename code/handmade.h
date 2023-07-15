@@ -65,6 +65,18 @@ struct Hero_Bitmap {
   Loaded_Bitmap torso;
 };
 
+struct Entity {
+    bool exist;
+    Tilemap_Position position;
+    Vector2 velocity; // @Note Or you can say: dPosition.
+    
+    u32 orientation; // Facing direction.
+
+    // @Note Properties below are in meters.
+    real32 height;
+    real32 width;
+};
+
 struct Game_State {
     World* world;
     Memory_Arena memory_arena;
@@ -72,9 +84,11 @@ struct Game_State {
     Loaded_Bitmap background;
     Hero_Bitmap hero_bitmaps[4];
 
-    u32 hero_orientation;
-    Tilemap_Position hero_position;
-    Vector2 hero_velocity;
+    u32 camera_following_entity_index;
+
+    u32 player_index_for_controller[get_array_size(((Game_Input*) 0)->controllers)];
+    u32 entity_count;
+    Entity entities[256];
 };
 
 #define HANDMADE_H

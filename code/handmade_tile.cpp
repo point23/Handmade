@@ -64,6 +64,11 @@ u32 get_tile_value(Tilemap* tilemap, u32 x, u32 y, u32 z) {
     return result;
 }
 
+bool is_tile_value_empty(u32 v) {
+    // @Temproray, 1 for ground, 3 for stairs(include both up stairs and down stairs)
+    return v == 1 || v == 3;
+}
+
 Raw_Chunk_Position get_raw_chunk_pos_for(Tilemap* tilemap, Tilemap_Position* pos) {
     Raw_Chunk_Position result;
 
@@ -79,14 +84,18 @@ Raw_Chunk_Position get_raw_chunk_pos_for(Tilemap* tilemap, Tilemap_Position* pos
 }
 
 bool is_point_empty(Tilemap* tilemap, Tilemap_Position* world_pos) {
-    bool result = false;
     u32 value = get_tile_value(tilemap, world_pos->x, world_pos->y, world_pos->z);
-    if (value == 1 || value == 3) { // @Temproray
-        result = true;
-    }
-    return result;
+    return is_tile_value_empty(value);
 }
 
 bool same_position(Tilemap_Position a, Tilemap_Position b) {
     return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+Tilemap_Position centered_tilemap_position(u32 x, u32 y, u32 z) {
+    Tilemap_Position result = {};
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
 }

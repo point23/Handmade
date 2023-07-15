@@ -79,6 +79,14 @@ internal void Win32_Debug_Log(LPCSTR info) {
     OutputDebugStringA("\n");
 }
 
+PLATFORM_PRINT(Win32_Print) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+}
+
 DEBUG_PLATFORM_FREE_FILE(Win32_Free_File) {
     if (memory == NULL)
         return;
@@ -558,7 +566,9 @@ Win32_Process_Pending_Messages(Game_Controller_Input *keyboard) {
             } else if (vk_code == VK_RIGHT) {
                 Win32_Process_Keyboard_Message(&keyboard->action_right, is_down);
             } else if (vk_code == VK_ESCAPE) {
+                Win32_Process_Keyboard_Message(&keyboard->end, is_down);
             } else if (vk_code == VK_SPACE) {
+                Win32_Process_Keyboard_Message(&keyboard->start, is_down);
             }
 
          } break;
@@ -806,6 +816,8 @@ s32 CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance,
         game_memory.Debug_Platform_Free_File = Win32_Free_File;
         game_memory.Debug_Platform_Read_File = Win32_Read_File;
         game_memory.Debug_Platform_Write_File = Win32_Write_File;
+
+        game_memory.Platform_Print = Win32_Print;
     }
 
     win32_state state = {};

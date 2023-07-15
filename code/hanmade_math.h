@@ -73,6 +73,10 @@ inline real32 dot_product(Vector2 a, Vector2 b) { // Inner Product
     return a.x * b.x + a.y * b.y;
 }
 
+inline real32 length_square(Vector2 a) {
+    return dot_product(a, a);
+}
+
 // ==== OTHER ====
 inline real32 square(real32 value) {
     real32 result = value * value;

@@ -75,6 +75,10 @@ typedef DEBUG_PLATFORM_FREE_FILE(debug_platform_free_file);
 // }
 // #endif
 
+// Platform debug methods.
+#define PLATFORM_PRINT(name) void name(const char* format, ...)
+typedef PLATFORM_PRINT(platform_print);
+#define PLATFORM_PRINT_POINTER(name) void (*name)(const char* format, ...)
 
 // ==== Structs ====
 struct Game_Back_Buffer {
@@ -149,6 +153,9 @@ struct Game_Memory {
     debug_platform_read_file* Debug_Platform_Read_File;
     debug_platform_write_file* Debug_Platform_Write_File;
     debug_platform_free_file* Debug_Platform_Free_File;
+
+    // Debug methods
+    platform_print* Platform_Print;
 };
 
 // ===== Assertions ====

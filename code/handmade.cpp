@@ -9,6 +9,8 @@
 #define NUM_WORLD_COLS 128
 #define NUM_WORLD_ROWS 128
 
+PLATFORM_PRINT_POINTER(Print);
+
 // @Note We shouldn't setup the game world by something global since we are unloading and loading this lib quite often...
 global Game_State *global_game_state;
 
@@ -141,126 +143,177 @@ internal void Draw_Bitmap(Game_Back_Buffer* buffer, Loaded_Bitmap bitmap, real32
 
 internal void Output_Sound(Game_Sound_Buffer *buffer) {}
 
-internal void Handle_Game_Input(Game_Input *input) {
-    for (s32 i = 0; i < 5; i++) {
-        Game_Controller_Input controller = input->controllers[i];
-        
-        Vector2 acc = {};
-        if (controller.move_up.ended_down) {
-            global_game_state->hero_orientation = 2;
-            acc.y =  1.0f;
-        }
-        
-        if (controller.move_down.ended_down) {
-            global_game_state->hero_orientation = 0;
-            acc.y = -1.0f;
+internal void Initialize_Entity(Entity* entity) {
+    entity->exist = true;
+
+    entity->orientation = DIR_DOWN;
+
+    entity->position.x = 1;
+    entity->position.y = 3;
+    entity->position.z = 0;
+    entity->position.tile_offset.x = 0.5f;
+    entity->position.tile_offset.y = 0.5f;
+
+    entity->height = 1.4f;
+    entity->width = entity->height * 0.75f;
+}
+
+internal Entity* Get_Entity(Game_State* game_state, u32 index) {
+    Entity* result = 0;
+    if (index < get_array_size(game_state->entities)) {
+        result = &game_state->entities[index];
+    }
+    return result;
+}
+
+internal u32 Add_Entity(Game_State* game_state) {
+    u32 index = game_state->entity_count++;
+    assert(index < get_array_size(game_state->entities));
+    return index;
+}
+
+internal void Move_Player(Game_State* game_state, Entity * entity, Vector2 acc, real32 dt) {
+    Tilemap* tilemap = game_state->world->tilemap;
+    Vector2& velocity = entity->velocity;
+
+    real32 speed = 80.0f;
+    if (0) { // @Todo Speed up when player pressed action button.
+        speed = 100.0f; 
+    }
+
+    acc *= speed;
+    acc -= 8.0f * velocity; // @Note Add Some Friction.
+
+    Tilemap_Position old_position = entity->position;
+    Tilemap_Position new_center = old_position;
+
+    // p' = (1/2 * a * t^2) + v * t + p
+    Vector2 position_delta = (0.5f * acc * square(dt)) + (velocity * dt);
+    new_center.tile_offset = position_delta + new_center.tile_offset;
+    // v' = a * t + v
+    velocity += (acc * dt);
+
+    Tilemap_Position new_left = new_center;
+    new_left.tile_offset.x -= 0.5f * entity->width;
+    
+    Tilemap_Position new_right = new_center;
+    new_right.tile_offset.x += 0.5f * entity->width;
+
+    canonicalize_position(tilemap, &new_center);
+    canonicalize_position(tilemap, &new_left);
+    canonicalize_position(tilemap, &new_right);
+
+    Tilemap_Position collide_position = new_center;
+    bool collided = false;
+    if (!is_point_empty(tilemap, &new_center)) {
+        collided = true;
+        collide_position = new_center;
+    }        
+    if (!is_point_empty(tilemap, &new_left)) {
+        collided = true;
+        collide_position = new_left;
+    }        
+    if (!is_point_empty(tilemap, &new_right)) {
+        collided = true;
+        collide_position = new_right;
+    }
+
+    if (!collided) {
+        if (!same_position(old_position, new_center)) {
+            u32 value = get_tile_value(tilemap, new_center.x, new_center.y, new_center.z);
+            
+            if (value == 3) {
+                new_center.z = 1 - new_center.z;  // @Temporary
+            }
         }
 
-        if (controller.move_right.ended_down) {
-            global_game_state->hero_orientation = 3;
-            acc.x = 1.0f;
+        entity->position = new_center;
+    } else { // Bounce back.
+        Vector2 n = {0.0f, 0.0f};
+        if (collide_position.x < old_position.x) {
+            n.x = -1.0f;
         }
-        
-        if (controller.move_left.ended_down) {
-            global_game_state->hero_orientation = 1;
-            acc.x = -1.0f;
+        if (collide_position.x > old_position.x) {
+            n.x = 1.0f;
         }
-
-        if (acc.x != 0.0f && acc.y != 0.0f) { // Normalize it...
-            acc *= 0.7071f;
+        if (collide_position.y < old_position.y) {
+            n.y = 1.0f;
         }
+        if (collide_position.y > old_position.y) {
+            n.y = -1.0f;
+        }
+        velocity = velocity - (1 * dot_product(velocity, n) * n);
+    }
 
-        Vector2& velocity = global_game_state->hero_velocity;
+    // @Todo Working on new collision detection strategy.
+    // const u32 min_tile_y = 0;
+    // const u32 min_tile_x = 0;
+    // const u32 one_past_max_tile_y = ;
+    // const u32 one_past_max_tile_x = ;
+    // const tile_z = global_game_state->hero_position.z;
+    
+    // Tilemap_Position best_point = global_game_state->hero_position;
+    // s32 best_distance_square = length_square(position_delta);
 
-        real32 speed = 5.0f;
-        if (controller.action_up.ended_down) speed = 10.0f; // @Hack
-        acc *= speed;
-        acc -= 0.75f * velocity; // @Note Friction
+    // for (u32 y = min_tile_y; y != one_past_max_tile_y; y++) {
+    //     for (u32 x = min_tile_x; x != one_past_max_tile_x; x++) {
+    //         u32 v = get_tile_value(tilemap, x, y, tile_z);
 
+    //         Tilemap_Position test_position = centered_tilemap_position(x, y, tile_z);
+    //     }
+    // }
+}
+
+internal void Handle_Game_Input(Game_State* game_state, Game_Input *input) {
+    for (u32 i = 0; i < 5; i++) {
+        Game_Controller_Input* controller = &input->controllers[i];
+        u32 entity_index = game_state->player_index_for_controller[i];
+        Entity* entity = Get_Entity(game_state, entity_index);
         real32 dt = input->dt_per_frame;
 
-        Tilemap_Position new_center = global_game_state->hero_position;
-        // p' = (1/2 * a * t^2) + v * t + p
-        new_center.tile_offset = (0.5f * acc * square(dt)) + (velocity * dt) + new_center.tile_offset;
-        // v' = a * t + v
-        velocity += (acc * dt);
+        // Print("Controller: %d, Entity: %d", i, entity_index);
 
-        Tilemap* tilemap = global_game_state->world->tilemap;
-        real32 player_width = 0.75f * tilemap->tile_side_in_meters; // @Todo Extract it somewhere.
+        if (!entity->exist) { // @Note Add entity if new player join in.
+            if (controller->start.ended_down) {
+                entity_index = Add_Entity(game_state);
+                Initialize_Entity(Get_Entity(game_state, entity_index));
+                game_state->player_index_for_controller[i] = entity_index;
 
-        Tilemap_Position new_left = new_center;
-        new_left.tile_offset.x -= 0.5f * player_width;
-        
-        Tilemap_Position new_right = new_center;
-        new_right.tile_offset.x += 0.5f * player_width;
-
-        canonicalize_position(tilemap, &new_center);
-        canonicalize_position(tilemap, &new_left);
-        canonicalize_position(tilemap, &new_right);
-
-        Tilemap_Position collide_position = new_center;
-        bool collided = false;
-        if (!is_point_empty(tilemap, &new_center)) {
-            collided = true;
-            collide_position = new_center;
-        }        
-        if (!is_point_empty(tilemap, &new_left)) {
-            collided = true;
-            collide_position = new_left;
-        }        
-        if (!is_point_empty(tilemap, &new_right)) {
-            collided = true;
-            collide_position = new_right;
-        }
-
-        if (!collided) {
-            if (!same_position(global_game_state->hero_position, new_center)) {
-                u32 value = get_tile_value(tilemap, new_center.x, new_center.y, new_center.z);
-                
-                if (value == 3) {
-                    new_center.z = 1 - new_center.z;  // @Temporary
+                if (!game_state->camera_following_entity_index) {
+                    game_state->camera_following_entity_index = entity_index;
                 }
             }
 
-            Tilemap_Position* camera_pos = &global_game_state->camera_position;
-
-            global_game_state->hero_position = new_center;
-            camera_pos->z = new_center.z;
-
-            real32 delta_x = tilemap->tile_side_in_meters * ((real32)new_center.x - (real32)camera_pos->x) + (new_center.tile_offset.x - camera_pos->tile_offset.x);
-            real32 delta_y = tilemap->tile_side_in_meters * ((real32)new_center.y - (real32)camera_pos->y) + (new_center.tile_offset.y - camera_pos->tile_offset.y);
-
-            if(delta_x > ((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
-                camera_pos->x += NUM_TILEMAP_COLS;
-            }
-
-            if(delta_x < -((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
-                camera_pos->x -= NUM_TILEMAP_COLS;
-            }
-
-            if(delta_y > ((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
-                camera_pos->y += NUM_TILEMAP_ROWS;
-            }
-
-            if(delta_y < -((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
-                camera_pos->y -= NUM_TILEMAP_ROWS;
-            }
-        } else { // Bounce back.
-            Vector2 n = {0.0f, 0.0f};
-            if (collide_position.x < global_game_state->hero_position.x) {
-                n.x = 1.0f;
-            }
-            if (collide_position.x > global_game_state->hero_position.x) {
-                n.x = -1.0f;
-            }
-            if (collide_position.y < global_game_state->hero_position.y) {
-                n.y = 1.0f;
-            }
-            if (collide_position.y > global_game_state->hero_position.y) {
-                n.y = -1.0f;
-            }
-            velocity = velocity - (2 * dot_product(velocity, n) * n);
+            continue;
         }
+
+        // Settle new aca value depend on controller status.
+        Vector2 acc = {};
+        if (controller->is_analog) {
+            acc = Vector2{controller->stick_average_x, controller->stick_average_y};
+        } else {
+            if (controller->move_up.ended_down) {
+                entity->orientation = DIR_UP;
+                acc.y = 1.0f;
+            }
+
+            if (controller->move_down.ended_down) {
+                entity->orientation = DIR_DOWN;
+                acc.y = -1.0f;
+            }
+
+            if (controller->move_right.ended_down) {
+                entity->orientation = DIR_RIGHT;
+                acc.x = 1.0f;
+            }
+
+            if (controller->move_left.ended_down) {
+                entity->orientation = DIR_LEFT;
+                acc.x = -1.0f;
+            }
+        }
+
+        Move_Player(game_state, entity, acc, dt);
     }
 }
 
@@ -301,35 +354,38 @@ internal void Draw_Rectangle(Game_Back_Buffer *buffer,
 // @Note Function signare is define in handmade.h
 extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
     global_game_state = (Game_State *)memory->permanent_storage;
-  
+    Print = memory->Platform_Print;
+
     if (!memory->is_initialized) {
         memory->is_initialized = true;
+
+        // @Note Reserve entity slot 0 for null entity.
+        u32 null_entity_idx = Add_Entity(global_game_state);
         
         global_game_state->background = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_background.bmp");
 
-        global_game_state->hero_orientation = 0;
-        Hero_Bitmap* hero_bitmap = &global_game_state->hero_bitmaps[0];
+        Hero_Bitmap* hero_bitmap = &global_game_state->hero_bitmaps[DIR_DOWN];
         hero_bitmap->align_x = 72;
         hero_bitmap->align_y = 35;
         hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_head.bmp");
         hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_cape.bmp");
         hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_front_torso.bmp");
-        hero_bitmap++;
 
+        hero_bitmap = &global_game_state->hero_bitmaps[DIR_LEFT];
         hero_bitmap->align_x = 72;
         hero_bitmap->align_y = 35;
         hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_head.bmp");
         hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_cape.bmp");
         hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_left_torso.bmp");
-        hero_bitmap++;
 
+        hero_bitmap = &global_game_state->hero_bitmaps[DIR_UP];
         hero_bitmap->align_x = 72;
         hero_bitmap->align_y = 35;
         hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_head.bmp");
         hero_bitmap->cape = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_cape.bmp");
         hero_bitmap->torso = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_back_torso.bmp");
-        hero_bitmap++;
-        
+
+        hero_bitmap = &global_game_state->hero_bitmaps[DIR_RIGHT];
         hero_bitmap->align_x = 72;
         hero_bitmap->align_y = 35;
         hero_bitmap->head = Load_BMP(thread, memory->Debug_Platform_Read_File, "test/test_hero_right_head.bmp");
@@ -343,14 +399,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
         World* world = global_game_state->world;
         world->tilemap = PUSH_STRUCT(memory_arena, Tilemap);
         Tilemap* tilemap = world->tilemap;
-
-        { // @Note Setup hero game state.
-            Tilemap_Position* init_pos = &global_game_state->hero_position;
-            init_pos->x = 3;
-            init_pos->y = 3;
-            init_pos->z = 0;
-            init_pos->tile_offset = {0.0f, 0.0f};
-        }
 
         { // @Note Setup camera pos
             global_game_state->camera_position = {};
@@ -490,25 +538,57 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
     World* world = global_game_state->world;
     Tilemap *tilemap = world->tilemap;
 
+    Handle_Game_Input(global_game_state, input);
+
+    // @Note Move camera to follow target player.
+    Entity* camera_follwing_entity = Get_Entity(global_game_state, global_game_state->camera_following_entity_index);
+    
+    if (camera_follwing_entity) {
+        Tilemap_Position* camera_pos = &global_game_state->camera_position;
+        camera_pos->z = camera_follwing_entity->position.z;
+
+        real32 delta_x = tilemap->tile_side_in_meters * ((real32)camera_follwing_entity->position.x - (real32)camera_pos->x) + (camera_follwing_entity->position.tile_offset.x - camera_pos->tile_offset.x);
+        real32 delta_y = tilemap->tile_side_in_meters * ((real32)camera_follwing_entity->position.y - (real32)camera_pos->y) + (camera_follwing_entity->position.tile_offset.y - camera_pos->tile_offset.y);
+
+        if(delta_x > ((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
+            camera_pos->x += NUM_TILEMAP_COLS;
+        }
+
+        if(delta_x < -((real32)NUM_TILEMAP_COLS / 2) * tilemap->tile_side_in_meters) {
+            camera_pos->x -= NUM_TILEMAP_COLS;
+        }
+
+        if(delta_y > ((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
+            camera_pos->y += NUM_TILEMAP_ROWS;
+        }
+
+        if(delta_y < -((real32)NUM_TILEMAP_ROWS / 2) * tilemap->tile_side_in_meters) {
+            camera_pos->y -= NUM_TILEMAP_ROWS;
+        }
+    }
+
     // Pinkish Debug BG
     // Draw_Rectangle(back_buffer, 0.0f, (real32)back_buffer->width, 0.0f, (real32)back_buffer->height, 1.0, 0.0, 1.0f);
     Draw_Bitmap(back_buffer, global_game_state->background, 0, 0);
 
-    Tilemap_Position hero_pos = global_game_state->hero_position;
-    Tilemap_Position camera_pos = global_game_state->camera_position;
-    Raw_Chunk_Position raw_hero_pos = get_raw_chunk_pos_for(tilemap, &hero_pos);
-   
     { // @Note With scrolling
+        Tilemap_Position* camera_pos = &global_game_state->camera_position;
+
         u32 tile_side_in_pixels = 60;
         real32 meters_to_pixels = (real32)tile_side_in_pixels / tilemap->tile_side_in_meters;
 
         real32 screen_height = (real32)back_buffer->height;
 
-        Vector2 screen_center = {(real32)back_buffer->width / 2.0f, 
-                            (real32)back_buffer->height / 2.0f };
+        Vector2 screen_center = {
+            (real32)back_buffer->width / 2.0f, 
+            (real32)back_buffer->height / 2.0f 
+        };
+
         { // @Note Draw the world.
-            Vector2 center_tile = {screen_center.x - camera_pos.tile_offset.x * meters_to_pixels, 
-                                  screen_center.y - camera_pos.tile_offset.y * meters_to_pixels};
+            Vector2 center_tile = {
+                screen_center.x - camera_pos->tile_offset.x * meters_to_pixels, 
+                screen_center.y - camera_pos->tile_offset.y * meters_to_pixels
+            };
 
             real32 half_tile_side_in_pixels = 0.5f * tile_side_in_pixels;
 
@@ -524,10 +604,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
                     real32 b = y - half_tile_side_in_pixels;
                     real32 t = y + half_tile_side_in_pixels;
 
-                    u32 tile_x = dx + camera_pos.x;
-                    u32 tile_y = dy + camera_pos.y;
+                    u32 tile_x = dx + camera_pos->x;
+                    u32 tile_y = dy + camera_pos->y;
 
-                    u32 val = get_tile_value(tilemap, tile_x, tile_y, camera_pos.z);
+                    u32 val = get_tile_value(tilemap, tile_x, tile_y, camera_pos->z);
 
                     if (val > 1) {
                         if (val == 2)
@@ -535,7 +615,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
                         else if (val == 3)
                             greyish = 0.25f;
 
-                        if (tile_x == camera_pos.x && tile_y == camera_pos.y) {
+                        if (tile_x == camera_pos->x && tile_y == camera_pos->y) {
                             greyish = 0.0f;
                         }
 
@@ -544,36 +624,50 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render) {
                 }
             }
         }
-        { // @Note Draw hero.
-            real32 R = 1.0f, G = 0.0f, B = 0.0f;
-            real32 half_hero_width  = 0.5f * 0.75f * (real32)tile_side_in_pixels;
-            real32 half_hero_height = 0.5f * (real32)tile_side_in_pixels;
 
-            Vector2 delta = {tilemap->tile_side_in_meters * ((real32)hero_pos.x - (real32)camera_pos.x) + (hero_pos.tile_offset.x - camera_pos.tile_offset.x),
-                        tilemap->tile_side_in_meters * ((real32)hero_pos.y - (real32)camera_pos.y) + (hero_pos.tile_offset.y - camera_pos.tile_offset.y)};
-            delta *= meters_to_pixels;
+        for (u32 i = 1; i <= global_game_state->entity_count; i++) {
+            Entity* entity = &global_game_state->entities[i];
 
-            Vector2 hero_center = screen_center + delta;
+            if (!entity->exist) {
+                continue;
+            }
 
-            real32 l = hero_center.x - half_hero_width; 
-            real32 r = hero_center.x + half_hero_width;
-            real32 b = hero_center.y - half_hero_height;
-            real32 t = hero_center.y + half_hero_height;
+            { // @Note Draw hero.
+                real32 R = 1.0f, G = 0.0f, B = 0.0f;
+                real32 half_hero_width  = 0.5f * 0.75f * (real32)tile_side_in_pixels;
+                real32 half_hero_height = 0.5f * (real32)tile_side_in_pixels;
 
-            Draw_Rectangle(back_buffer, l, r, b, t, R, G, B);
-            
-            u32 orientation = global_game_state->hero_orientation;
-            Hero_Bitmap hero_bmp = global_game_state->hero_bitmaps[orientation];
-            
-            real32 bmp_x = hero_center.x - hero_bmp.align_x;
-            real32 bmp_y = hero_center.y - hero_bmp.align_y;
+                real32 tile_delta_x = (real32)entity->position.x - (real32)camera_pos->x;
+                real32 tile_delta_y = (real32)entity->position.y - (real32)camera_pos->y;
+                Vector2 offset_delta = entity->position.tile_offset - camera_pos->tile_offset;
+                Vector2 delta = {
+                    tilemap->tile_side_in_meters * tile_delta_x + offset_delta.x,
+                    tilemap->tile_side_in_meters * tile_delta_y + offset_delta.y
+                };
 
-            Draw_Bitmap(back_buffer, hero_bmp.head, bmp_x, bmp_y);
-            Draw_Bitmap(back_buffer, hero_bmp.cape, bmp_x, bmp_y);
-            Draw_Bitmap(back_buffer, hero_bmp.torso, bmp_x, bmp_y);
+                delta *= meters_to_pixels;
+
+                Vector2 hero_center = screen_center + delta;
+
+                real32 l = hero_center.x - half_hero_width; 
+                real32 r = hero_center.x + half_hero_width;
+                real32 b = hero_center.y - half_hero_height;
+                real32 t = hero_center.y + half_hero_height;
+
+                Draw_Rectangle(back_buffer, l, r, b, t, R, G, B);
+                
+                u32 orientation = entity->orientation;
+                Hero_Bitmap hero_bmp = global_game_state->hero_bitmaps[orientation];
+                
+                real32 bmp_x = hero_center.x - hero_bmp.align_x;
+                real32 bmp_y = hero_center.y - hero_bmp.align_y;
+
+                Draw_Bitmap(back_buffer, hero_bmp.head, bmp_x, bmp_y);
+                Draw_Bitmap(back_buffer, hero_bmp.cape, bmp_x, bmp_y);
+                Draw_Bitmap(back_buffer, hero_bmp.torso, bmp_x, bmp_y);
+            }
         }
     }
-    Handle_Game_Input(input);
 }
 
 extern "C" GET_SOUND_SAMPLES(Get_Sound_Samples) { Output_Sound(sound_buffer); }

@@ -1,5 +1,12 @@
 #if !defined(HANDMADE_TILE_H)
 
+enum Direction {
+    DIR_DOWN,
+    DIR_LEFT,
+    DIR_UP,
+    DIR_RIGHT,
+};
+
 struct Tilemap_Position {
     // @Note Fixed point tile location.
     // The high 24 bits are the tile chunk index.
